@@ -1,0 +1,32 @@
+
+# Dependências
+node_modules/
+.pnp
+.pnp.js
+.yarn/
+
+# Build e Saída
+dist/
+build/
+.netlify/
+out/
+*.log
+
+# Variáveis de Ambiente
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor e Sistema
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Cache do Vite/Vercel/Netlify
+.vite/
+.next/
+.cache/
