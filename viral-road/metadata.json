@@ -1,0 +1,7 @@
+{
+  "name": "VIRAL ROAD",
+  "description": "Plataforma de IA para estrategistas de conteúdo e criadores digitais.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
