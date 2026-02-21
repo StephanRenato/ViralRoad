@@ -1,4 +1,3 @@
-
 export enum ProfileType {
   InfluencerGeneral = 'Influenciador Geral',
   Lawyer = 'Advogado',
@@ -115,52 +114,14 @@ export interface GeneratedContent {
   creativeDirection: string;
   distribution: string;
   nextTest: string;
-  nextContentRecommendation?: string;
-  nextFunnelStage?: string;
   status: ContentStatus;
   date: string;
   startDate?: string;
   endDate?: string;
   labels?: RoadLabel[];
   subtasks?: RoadSubtask[];
-  tags?: string[];
 }
 
-export interface SocialPostAnalysis {
-  type: string;
-  topic: string;
-  engagement_score: number;
-  insight: string;
-}
-
-export interface AudienceDemographics {
-  age_range?: string;
-  gender_split?: string;
-  top_locations?: string[];
-  audience_persona?: string;
-}
-
-export interface ExtendedDiagnostic {
-  strengths: string[];
-  weaknesses: string[];
-  recommendations: string[];
-}
-
-export interface RoadDiagnostic {
-  status_label: string;
-  content_strategy_advice: string;
-  tone_audit: string;
-  key_action_item: string;
-}
-
-export interface ApifyRawData {
-  user?: any;
-  stats?: any;
-  videos?: any[];
-  [key: string]: any;
-}
-
-// Normalized Metrics based on user prompt
 export interface NormalizedMetrics {
   followers: number | null;
   following: number | null;
@@ -173,12 +134,9 @@ export interface NormalizedMetrics {
   external_link: string | null;
   verified: boolean | null;
   is_private: boolean | null;
-  
-  // Backwards compatibility for internal use if needed (mapped from old types)
   handle?: string; 
 }
 
-// Analysis AI structure based on user prompt
 export interface AnalysisAi {
   viral_score: number | null;
   content_pillars: string[] | null;
@@ -191,20 +149,11 @@ export interface AnalysisAi {
     content_strategy_advice: string;
     tone_audit: string;
   };
-  
-  // Optional extras from Gemini service
-  top_performing_content?: SocialPostAnalysis[];
   next_post_recommendation?: {
     format: string;
     topic: string;
     reason: string;
   };
-  audience_demographics?: AudienceDemographics;
-  profile_optimization?: {
-    name_suggestion: string;
-    bio_suggestion: string;
-  };
-  extended_diagnostic?: ExtendedDiagnostic;
 }
 
 export interface SocialProfile {
@@ -212,18 +161,16 @@ export interface SocialProfile {
   url: string;
   username: string;
   normalized_metrics: NormalizedMetrics;
-  analysis_ai: AnalysisAi;
+  analysis_ai: AnalysisAi | null;
   raw_apify_data: any;
   last_sync: string;
-  
-  // Helper for UI logic
   objective?: string;
 }
 
 export interface AnalysisResult {
   results: {
     profile_id: string;
-    analysis: any; // Flexible to accommodate mapping
+    analysis: any;
   }[];
   detected_specialization?: string;
   suggestion_reason?: string;
@@ -236,20 +183,11 @@ export interface User {
   profileType?: ProfileType;
   specialization?: string;
   avatarUrl?: string;
-  stripeCustomerId?: string;
   subscriptionStatus?: SubscriptionStatus;
   currentPlan?: PlanType;
-  subscriptionEndDate?: string;
   usedBlueprints?: number;
   monthlyLimit?: number;
   notificationsAiDaily?: boolean;
   notificationsEngagement?: boolean;
   socialProfiles?: SocialProfile[];
-}
-
-export interface UsageLimit {
-  user_id: string;
-  plan: PlanType;
-  monthly_limit: number;
-  used_this_month: number;
 }

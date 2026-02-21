@@ -97,8 +97,24 @@ const App: React.FC = () => {
     };
   };
 
+  const CACHE_KEY = 'viral_road_user_cache';
+
   const fetchUserData = async (authUser: any) => {
     if (!authUser) return;
+    
+    // Tenta carregar do cache primeiro (Instantâneo)
+    const cachedData = localStorage.getItem(CACHE_KEY);
+    if (cachedData) {
+      try {
+        const parsed = JSON.parse(cachedData);
+        if (parsed.id === authUser.id) {
+          setUser(parsed);
+          setLoading(false);
+        }
+      } catch (e) {
+        console.warn("Erro ao ler cache:", e);
+      }
+    }
     
     // TIME-TO-INTERACTIVE OTIMIZADO:
     const MAX_WAIT_TIME = 1500; 
@@ -116,10 +132,12 @@ const App: React.FC = () => {
 
       if (result === 'TIMEOUT') {
         console.warn("⚡ Banco lento. Acesso liberado via Fast Track.");
-        // Monta usuário com dados da sessão (rápido)
-        const fastUser = processUserData(authUser, null, null);
-        setUser(fastUser);
-        setLoading(false); // Libera a UI imediatamente
+        // Monta usuário com dados da sessão (rápido) apenas se não tivermos cache
+        if (!localStorage.getItem(CACHE_KEY)) {
+          const fastUser = processUserData(authUser, null, null);
+          setUser(fastUser);
+          setLoading(false); // Libera a UI imediatamente
+        }
         
         // Continua buscando em background para atualizar a UI depois
         fetchPromise.then((bgResults: any) => {
@@ -127,6 +145,7 @@ const App: React.FC = () => {
           const usage = bgResults[1].status === 'fulfilled' ? bgResults[1].value.data : null;
           const fullUser = processUserData(authUser, profile, usage);
           setUser(fullUser); // Atualização silenciosa
+          localStorage.setItem(CACHE_KEY, JSON.stringify(fullUser));
         });
       } else {
         // Banco respondeu rápido
@@ -150,6 +169,7 @@ const App: React.FC = () => {
 
         const fullUser = processUserData(authUser, profile, usage);
         setUser(fullUser);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(fullUser));
         setLoading(false);
       }
       
