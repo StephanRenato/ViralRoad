@@ -71,12 +71,17 @@ const App: React.FC = () => {
     }
 
     // Extração segura de configurações (suporte a JSON e colunas planas) + Fallback para metadata
-    const settings = profile?.settings || authUser.user_metadata?.settings || {};
+    const dbSettings = profile?.settings;
+    const metaSettings = authUser.user_metadata?.settings;
+    const settings = (dbSettings && Object.keys(dbSettings).length > 0) ? dbSettings : (metaSettings || {});
+    
     const notifAi = settings.notifications_ai_daily ?? profile?.notifications_ai_daily ?? authUser.user_metadata?.notifications_ai_daily ?? true;
     const notifEng = settings.notifications_engagement ?? profile?.notifications_engagement ?? authUser.user_metadata?.notifications_engagement ?? true;
     
-    // Fallback para social_profiles
-    const safeSocialProfiles = profile?.social_profiles || authUser.user_metadata?.social_profiles || [];
+    // Fallback inteligente para social_profiles: prefere o que não estiver vazio
+    const dbSocial = profile?.social_profiles;
+    const metaSocial = authUser.user_metadata?.social_profiles;
+    const safeSocialProfiles = (Array.isArray(dbSocial) && dbSocial.length > 0) ? dbSocial : (Array.isArray(metaSocial) ? metaSocial : []);
 
     return {
       id: authUser.id,
@@ -99,25 +104,27 @@ const App: React.FC = () => {
 
   const CACHE_KEY = 'viral_road_user_cache';
 
-  const fetchUserData = async (authUser: any) => {
+  const fetchUserData = async (authUser: any, forceRefresh = false) => {
     if (!authUser) return;
     
-    // Tenta carregar do cache primeiro (Instantâneo)
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    if (cachedData) {
-      try {
-        const parsed = JSON.parse(cachedData);
-        if (parsed.id === authUser.id) {
-          setUser(parsed);
-          setLoading(false);
+    // Tenta carregar do cache primeiro (Instantâneo) - Apenas se não for um refresh forçado
+    if (!forceRefresh) {
+      const cachedData = localStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        try {
+          const parsed = JSON.parse(cachedData);
+          if (parsed.id === authUser.id) {
+            setUser(parsed);
+            setLoading(false);
+          }
+        } catch (e) {
+          console.warn("Erro ao ler cache:", e);
         }
-      } catch (e) {
-        console.warn("Erro ao ler cache:", e);
       }
     }
     
     // TIME-TO-INTERACTIVE OTIMIZADO:
-    const MAX_WAIT_TIME = 1500; 
+    const MAX_WAIT_TIME = 2000; 
 
     try {
       const fetchPromise = Promise.allSettled([
@@ -257,7 +264,7 @@ const App: React.FC = () => {
                     showUpgrade={showUpgradeModal} 
                     onCloseUpgrade={() => setShowUpgradeModal(false)} 
                     onOpenUpgrade={() => setShowUpgradeModal(true)} 
-                    onRefreshUser={() => fetchUserData(session.user)}
+                    onRefreshUser={() => fetchUserData(session.user, true)}
                   />
                 </main>
               </div>

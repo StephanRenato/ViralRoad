@@ -219,10 +219,20 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
                            alert(`Você já tem um perfil de ${newSocial.platform} conectado.`);
                            return;
                         }
+                        const extractUsername = (url: string) => {
+                           try {
+                              const cleanUrl = url.replace(/\/$/, '');
+                              const parts = cleanUrl.split('/');
+                              return parts[parts.length - 1] || 'user';
+                           } catch (e) {
+                              return 'user';
+                           }
+                        };
+
                         const newEntry = {
                            platform: newSocial.platform,
                            url: newSocial.url,
-                           username: newSocial.url.split('/').pop() || '',
+                           username: extractUsername(newSocial.url),
                            normalized_metrics: { followers: 0, following: 0, likes: 0, posts: 0, views: 0, engagement_rate: 0, bio: '', avatar_url: '', external_link: '', verified: false, is_private: false },
                            analysis_ai: null,
                            raw_apify_data: null,

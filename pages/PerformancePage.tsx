@@ -228,6 +228,19 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 </div>
              </div>
           </motion.div>
+        ) : !analysis ? (
+          <motion.div key="needs-analysis" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1 }} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[3rem] p-12 text-center space-y-8 shadow-2xl relative overflow-hidden">
+             <div className="w-24 h-24 bg-yellow-400/10 rounded-[2.5rem] flex items-center justify-center mx-auto text-yellow-400"><Microscope size={40} /></div>
+             <div className="space-y-4 max-w-md mx-auto">
+                <h3 className="text-3xl font-black italic uppercase text-zinc-900 dark:text-white">Perfil <span className="text-yellow-400">Conectado</span></h3>
+                <p className="text-zinc-500 text-xs font-bold italic uppercase tracking-widest">Seu perfil @{currentProfile.username} foi vinculado, mas ainda não foi auditado pela IA.</p>
+                <div className="pt-4">
+                    <button onClick={() => handleConnect(currentProfile.url)} disabled={addingUrl} className="w-full bg-yellow-400 text-black py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2">
+                        {addingUrl ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} fill="currentColor" />} EXECUTAR AUDITORIA NEURAL
+                    </button>
+                </div>
+             </div>
+          </motion.div>
         ) : (
           <motion.div key="data" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-10">
              {/* Bento Grid Performance */}
