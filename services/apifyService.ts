@@ -11,10 +11,15 @@ const ACTOR_IDS = {
 };
 
 async function callApifyActor(actorId: string, input: any): Promise<any> {
+  let platform = 'instagram';
+  if (actorId.includes('tiktok')) platform = 'tiktok';
+  else if (actorId.includes('youtube')) platform = 'youtube';
+  else if (actorId.includes('kwai')) platform = 'kwai';
+
   const proxyResponse = await fetch('/api/apify-proxy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platform: actorId.includes('tiktok') ? 'tiktok' : 'instagram', payload: input })
+      body: JSON.stringify({ platform, payload: input })
   });
 
   if (proxyResponse.ok) {
