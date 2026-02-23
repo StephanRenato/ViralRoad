@@ -8,7 +8,7 @@ import {
   Clock, Target, Hash, Loader2, CheckCircle2, ExternalLink, Sparkles, 
   Crosshair, Users, Heart, Search, ChevronDown, 
   AlertCircle, BrainCircuit, Megaphone, Lightbulb, Stethoscope, Clapperboard, Lock,
-  WifiOff, Eye, Trophy, UserPlus, AlertTriangle, Layers, FileText, Calendar, Check, Wand2, Microscope, Terminal
+  WifiOff, Eye, Trophy, UserPlus, AlertTriangle, Layers, FileText, Calendar, Check, Wand2, Microscope, Terminal, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyzeSocialStrategy, auditUserProfile } from '../services/geminiService';
