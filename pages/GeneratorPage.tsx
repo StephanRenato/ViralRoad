@@ -87,6 +87,17 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
     }
   }, []);
 
+  // Sync with user profile changes
+  useEffect(() => {
+    if (user) {
+      setParams(prev => ({
+        ...prev,
+        profileType: user.profileType || prev.profileType,
+        specialization: user.specialization || prev.specialization
+      }));
+    }
+  }, [user.profileType, user.specialization]);
+
   // Save state to LocalStorage on change
   useEffect(() => {
     localStorage.setItem('road_generator_params', JSON.stringify(params));

@@ -79,7 +79,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         if (basicError) {
           console.error("Falha no salvamento básico:", basicError);
           // 3. Se tudo falhar no banco, salva no Metadata do Auth (Garante que não perca os dados)
-          const { error: authError } = await supabase.auth.updateUser({
+          const { data: { user: updatedAuthUser }, error: authError } = await supabase.auth.updateUser({
             data: {
               name: localProfile.name,
               specialization: localProfile.specialization,
@@ -110,6 +110,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         setSuccessMsg('Perfil Sincronizado!');
       }
 
+      // Pequeno delay para garantir que o Supabase processou a alteração antes do refresh
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       if (onRefreshUser) onRefreshUser();
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (e: any) {

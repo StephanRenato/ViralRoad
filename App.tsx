@@ -107,15 +107,23 @@ const App: React.FC = () => {
   const fetchUserData = async (authUser: any, forceRefresh = false) => {
     if (!authUser) return;
     
-    // Tenta carregar do cache primeiro (Instantâneo) - Apenas se não for um refresh forçado
-    if (!forceRefresh) {
+    let currentUser = authUser;
+
+    // Se for um refresh forçado, buscamos a sessão mais recente para garantir os metadados atualizados
+    if (forceRefresh) {
+      const { data: { user: freshUser } } = await supabase.auth.getUser();
+      if (freshUser) currentUser = freshUser;
+      localStorage.removeItem(CACHE_KEY); // Limpa cache para forçar reconstrução
+    } else {
+      // Tenta carregar do cache primeiro (Instantâneo)
       const cachedData = localStorage.getItem(CACHE_KEY);
       if (cachedData) {
         try {
           const parsed = JSON.parse(cachedData);
-          if (parsed.id === authUser.id) {
+          if (parsed.id === currentUser.id) {
             setUser(parsed);
             setLoading(false);
+            // Mesmo com cache, buscamos no banco em background para atualizar
           }
         } catch (e) {
           console.warn("Erro ao ler cache:", e);
@@ -124,67 +132,45 @@ const App: React.FC = () => {
     }
     
     // TIME-TO-INTERACTIVE OTIMIZADO:
-    const MAX_WAIT_TIME = 2000; 
+    const MAX_WAIT_TIME = 2500; 
 
     try {
       const fetchPromise = Promise.allSettled([
-        supabase.from('profiles').select('*').eq('id', authUser.id).single(),
-        supabase.from('usage_limits').select('*').eq('user_id', authUser.id).single()
+        supabase.from('profiles').select('*').eq('id', currentUser.id).single(),
+        supabase.from('usage_limits').select('*').eq('user_id', currentUser.id).single()
       ]);
 
       const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), MAX_WAIT_TIME));
 
-      // Corrida: Banco vs Relógio
       const result: any = await Promise.race([fetchPromise, timeoutPromise]);
 
       if (result === 'TIMEOUT') {
-        console.warn("⚡ Banco lento. Acesso liberado via Fast Track.");
-        // Monta usuário com dados da sessão (rápido) apenas se não tivermos cache
-        if (!localStorage.getItem(CACHE_KEY)) {
-          const fastUser = processUserData(authUser, null, null);
-          setUser(fastUser);
-          setLoading(false); // Libera a UI imediatamente
-        }
+        console.warn("⚡ Banco lento. Usando metadados da sessão.");
+        const fastUser = processUserData(currentUser, null, null);
+        setUser(fastUser);
+        setLoading(false);
         
-        // Continua buscando em background para atualizar a UI depois
         fetchPromise.then((bgResults: any) => {
           const profile = bgResults[0].status === 'fulfilled' ? bgResults[0].value.data : null;
           const usage = bgResults[1].status === 'fulfilled' ? bgResults[1].value.data : null;
-          const fullUser = processUserData(authUser, profile, usage);
-          setUser(fullUser); // Atualização silenciosa
+          const fullUser = processUserData(currentUser, profile, usage);
+          setUser(fullUser);
           localStorage.setItem(CACHE_KEY, JSON.stringify(fullUser));
         });
       } else {
-        // Banco respondeu rápido
         const profileResult = result[0];
         const usageResult = result[1];
         const profile = profileResult.status === 'fulfilled' ? profileResult.value.data : null;
         const usage = usageResult.status === 'fulfilled' ? usageResult.value.data : null;
         
-        // Se não tiver usage, cria em background
-        if (!usage) {
-           const isSpecialUser = authUser.email?.toLowerCase() === 'stephan_renato@hotmail.com';
-           const initialPlan = isSpecialUser ? PlanType.Pro : PlanType.Starter;
-           const initialLimit = isSpecialUser ? 999999 : 5;
-           supabase.from('usage_limits').insert([{
-             user_id: authUser.id,
-             plan: initialPlan,
-             monthly_limit: initialLimit,
-             used_this_month: 0
-           }]).then(({ error }) => { if (error) console.warn("Background usage creation:", error); });
-        }
-
-        const fullUser = processUserData(authUser, profile, usage);
+        const fullUser = processUserData(currentUser, profile, usage);
         setUser(fullUser);
         localStorage.setItem(CACHE_KEY, JSON.stringify(fullUser));
         setLoading(false);
       }
-      
       return true;
     } catch (e) {
-      console.error("Erro crítico ao carregar dados:", e);
-      // Fallback de segurança para não travar o app
-      setUser(processUserData(authUser, null, null));
+      setUser(processUserData(currentUser, null, null));
       setLoading(false);
       return false;
     }
