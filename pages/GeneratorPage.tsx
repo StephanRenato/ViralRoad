@@ -247,8 +247,11 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
         
         await supabase
           .from('usage_limits')
-          .update({ used_this_month: newUsedCount })
-          .eq('user_id', authUser.id);
+          .upsert({ 
+            user_id: authUser.id, 
+            used_this_month: newUsedCount,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'id' });
       }
 
       if (onRefreshUser) await onRefreshUser();

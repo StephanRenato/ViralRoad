@@ -42,25 +42,29 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Usamos upsert para garantir que o registro seja criado caso não exista (Fast Track/Novos Usuários)
       const { error } = await supabase
         .from('profiles')
-        .update({
+        .upsert({
+          id: user.id,
           name: localProfile.name,
           specialization: localProfile.specialization,
           social_profiles: localProfile.socialProfiles,
           settings: {
              notifications_ai_daily: localProfile.notificationsAiDaily,
              notifications_engagement: localProfile.notificationsEngagement
-          }
-        })
-        .eq('id', user.id);
+          },
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
 
       if (error) throw error;
+      
       setSuccessMsg('Perfil Sincronizado!');
       if (onRefreshUser) onRefreshUser();
       setTimeout(() => setSuccessMsg(''), 3000);
-    } catch (e) {
-      alert('Erro ao salvar.');
+    } catch (e: any) {
+      console.error("Erro ao salvar perfil:", e);
+      alert(`Erro ao salvar: ${e.message || 'Verifique sua conexão'}`);
     } finally {
       setSaving(false);
     }

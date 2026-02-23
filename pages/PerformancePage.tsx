@@ -142,7 +142,13 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
       const updated = [...localProfiles.filter(p => p.platform !== activePlatform), newProfile];
       setLocalProfiles(updated);
-      await supabase.from('profiles').update({ social_profiles: updated }).eq('id', user.id);
+      
+      await supabase.from('profiles').upsert({ 
+        id: user.id,
+        social_profiles: updated,
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'id' });
+      
       onRefreshUser();
 
     } catch (e: any) {
