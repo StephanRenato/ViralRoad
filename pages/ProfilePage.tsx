@@ -41,9 +41,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
 
   const handleSave = async () => {
     setSaving(true);
+    setSuccessMsg('');
     try {
-      // Simplificando o upsert para evitar erro de colunas inexistentes (como updated_at)
-      const payload = {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) throw new Error("Sessão expirada");
+
+      // 1. Tenta o salvamento completo no banco de dados
+      const fullPayload = {
         id: user.id,
         name: localProfile.name,
         specialization: localProfile.specialization,
@@ -54,18 +58,62 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         }
       };
 
-      const { error } = await supabase
+      const { error: fullError } = await supabase
         .from('profiles')
-        .upsert(payload, { onConflict: 'id' });
+        .upsert(fullPayload, { onConflict: 'id' });
 
-      if (error) throw error;
-      
-      setSuccessMsg('Perfil Sincronizado!');
+      if (fullError) {
+        console.warn("Falha no salvamento completo, tentando modo de compatibilidade...", fullError);
+        
+        // 2. Se falhar por coluna ausente, tenta salvar apenas o básico
+        const basicPayload = {
+          id: user.id,
+          name: localProfile.name,
+          specialization: localProfile.specialization
+        };
+
+        const { error: basicError } = await supabase
+          .from('profiles')
+          .upsert(basicPayload, { onConflict: 'id' });
+
+        if (basicError) {
+          console.error("Falha no salvamento básico:", basicError);
+          // 3. Se tudo falhar no banco, salva no Metadata do Auth (Garante que não perca os dados)
+          const { error: authError } = await supabase.auth.updateUser({
+            data: {
+              name: localProfile.name,
+              specialization: localProfile.specialization,
+              social_profiles: localProfile.socialProfiles,
+              settings: {
+                notifications_ai_daily: localProfile.notificationsAiDaily,
+                notifications_engagement: localProfile.notificationsEngagement
+              }
+            }
+          });
+          
+          if (authError) throw authError;
+          setSuccessMsg('Perfil Salvo (Modo de Segurança)');
+        } else {
+          // Salvou o básico, agora tenta salvar o resto no metadata para não perder
+          await supabase.auth.updateUser({
+            data: {
+              social_profiles: localProfile.socialProfiles,
+              settings: {
+                notifications_ai_daily: localProfile.notificationsAiDaily,
+                notifications_engagement: localProfile.notificationsEngagement
+              }
+            }
+          });
+          setSuccessMsg('Perfil Sincronizado!');
+        }
+      } else {
+        setSuccessMsg('Perfil Sincronizado!');
+      }
+
       if (onRefreshUser) onRefreshUser();
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (e: any) {
-      console.error("Erro detalhado ao salvar perfil:", e);
-      // Se o erro for sobre uma coluna específica, o alert agora mostrará
+      console.error("Erro crítico ao salvar perfil:", e);
       alert(`Erro ao salvar: ${e.message || 'Verifique sua conexão'}`);
     } finally {
       setSaving(false);

@@ -72,8 +72,8 @@ const App: React.FC = () => {
 
     // Extração segura de configurações (suporte a JSON e colunas planas) + Fallback para metadata
     const settings = profile?.settings || authUser.user_metadata?.settings || {};
-    const notifAi = settings.notifications_ai_daily ?? profile?.notifications_ai_daily ?? true;
-    const notifEng = settings.notifications_engagement ?? profile?.notifications_engagement ?? true;
+    const notifAi = settings.notifications_ai_daily ?? profile?.notifications_ai_daily ?? authUser.user_metadata?.notifications_ai_daily ?? true;
+    const notifEng = settings.notifications_engagement ?? profile?.notifications_engagement ?? authUser.user_metadata?.notifications_engagement ?? true;
     
     // Fallback para social_profiles
     const safeSocialProfiles = profile?.social_profiles || authUser.user_metadata?.social_profiles || [];
@@ -84,7 +84,7 @@ const App: React.FC = () => {
       name: safeName,
       profileType: safeProfileType,
       specialization: safeSpecialization,
-      avatarUrl: profile?.avatar_url,
+      avatarUrl: profile?.avatar_url || authUser.user_metadata?.avatar_url,
       currentPlan: isSpecialUser ? PlanType.Pro : (finalUsage?.plan as PlanType || PlanType.Starter),
       subscriptionStatus: isSpecialUser ? SubscriptionStatus.Active : ((profile?.subscription_status as SubscriptionStatus) || SubscriptionStatus.None),
       usedBlueprints: finalUsage?.used_this_month || 0,

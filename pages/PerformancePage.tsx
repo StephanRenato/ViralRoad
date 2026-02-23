@@ -143,10 +143,20 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       const updated = [...localProfiles.filter(p => p.platform !== activePlatform), newProfile];
       setLocalProfiles(updated);
       
-      await supabase.from('profiles').upsert({ 
+      // 1. Tenta salvar no banco de dados
+      const { error: dbError } = await supabase.from('profiles').upsert({ 
         id: user.id,
         social_profiles: updated
       }, { onConflict: 'id' });
+      
+      if (dbError) {
+        console.warn("Falha ao salvar performance no banco, usando metadata...", dbError);
+        // 2. Fallback para Metadata do Auth
+        const { error: authError } = await supabase.auth.updateUser({
+          data: { social_profiles: updated }
+        });
+        if (authError) throw authError;
+      }
       
       onRefreshUser();
 
