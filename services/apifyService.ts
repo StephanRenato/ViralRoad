@@ -11,24 +11,19 @@ const ACTOR_IDS = {
 };
 
 async function callApifyActor(actorId: string, input: any): Promise<any> {
-  try {
-    const proxyResponse = await fetch('/api/apify-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ platform: actorId.includes('tiktok') ? 'tiktok' : 'instagram', payload: input })
-    });
+  const proxyResponse = await fetch('/api/apify-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: actorId.includes('tiktok') ? 'tiktok' : 'instagram', payload: input })
+  });
 
-    if (proxyResponse.ok) {
-        const data = await proxyResponse.json();
-        return data.items || (Array.isArray(data) ? data : [data]);
-    }
-    throw new Error("Proxy fail");
-  } catch (e) {
-    const token = process.env.APIFY_TOKEN || APIFY_TOKEN_FALLBACK;
-    const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${token}&memory=256`;
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
-    return await res.json();
+  if (proxyResponse.ok) {
+      const data = await proxyResponse.json();
+      return data.items || (Array.isArray(data) ? data : [data]);
   }
+  
+  const errorData = await proxyResponse.json().catch(() => ({}));
+  throw new Error(errorData.error || `Falha ao buscar dados da plataforma: ${proxyResponse.status}`);
 }
 
 export const mapToAppMetrics = (normalized: any): NormalizedMetrics => {

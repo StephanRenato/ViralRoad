@@ -4,19 +4,18 @@ import { AnalysisResult } from "../types";
 const SYSTEM_PROMPT = `Você é o VIRAL ROAD, estrategista de elite. Responda em PT-BR.`;
 
 async function callGeminiHybrid(model: string, prompt: string, config: any) {
-  try {
-    const response = await fetch('/api/ia-proxy', {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, contents: prompt, config })
-    });
-    return await response.json();
-  } catch (e) {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
-    const response = await ai.models.generateContent({ model, contents: prompt, config });
-    const text = response.text || "{}";
-    return config.responseMimeType === "application/json" ? JSON.parse(text) : { text };
+  const response = await fetch('/api/ia-proxy', {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model, contents: prompt, config })
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Erro na API: ${response.status}`);
   }
+  
+  return await response.json();
 }
 
 export async function generateNarratives(params: any) {

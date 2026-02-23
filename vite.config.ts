@@ -7,16 +7,22 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, (process as any).cwd(), '');
   return {
     plugins: [react()],
-    define: {
-      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || ''),
-      'process.env.APIFY_TOKEN': JSON.stringify(env.APIFY_TOKEN || ''),
-    },
     server: {
       port: 3000,
       host: '0.0.0.0',
     },
     build: {
       outDir: 'dist',
+      chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'react-router-dom'],
+            utils: ['@supabase/supabase-js', 'lucide-react', 'framer-motion'],
+            ai: ['@google/genai']
+          }
+        }
+      }
     },
   };
 });
