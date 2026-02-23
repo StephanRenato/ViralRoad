@@ -69,6 +69,12 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const [localProfiles, setLocalProfiles] = useState<SocialProfile[]>(user.socialProfiles || []);
 
   useEffect(() => {
+    if (user.socialProfiles) {
+      setLocalProfiles(user.socialProfiles);
+    }
+  }, [user.socialProfiles]);
+
+  useEffect(() => {
     if (analyzingPlatform) {
         const interval = setInterval(() => setCurrentTip(prev => (prev + 1) % LOADING_TIPS.length), 3000);
         return () => clearInterval(interval);

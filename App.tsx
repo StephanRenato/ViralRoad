@@ -73,15 +73,17 @@ const App: React.FC = () => {
     // Extração segura de configurações (suporte a JSON e colunas planas) + Fallback para metadata
     const dbSettings = profile?.settings;
     const metaSettings = authUser.user_metadata?.settings;
-    const settings = (dbSettings && Object.keys(dbSettings).length > 0) ? dbSettings : (metaSettings || {});
+    const settings = (dbSettings !== undefined && dbSettings !== null) ? dbSettings : (metaSettings || {});
     
     const notifAi = settings.notifications_ai_daily ?? profile?.notifications_ai_daily ?? authUser.user_metadata?.notifications_ai_daily ?? true;
     const notifEng = settings.notifications_engagement ?? profile?.notifications_engagement ?? authUser.user_metadata?.notifications_engagement ?? true;
     
-    // Fallback inteligente para social_profiles: prefere o que não estiver vazio
+    // Fallback inteligente para social_profiles: confia no banco se existir (mesmo vazio), senão usa metadata
     const dbSocial = profile?.social_profiles;
     const metaSocial = authUser.user_metadata?.social_profiles;
-    const safeSocialProfiles = (Array.isArray(dbSocial) && dbSocial.length > 0) ? dbSocial : (Array.isArray(metaSocial) ? metaSocial : []);
+    const safeSocialProfiles = (dbSocial !== undefined && dbSocial !== null) 
+      ? dbSocial 
+      : (Array.isArray(metaSocial) ? metaSocial : []);
 
     return {
       id: authUser.id,
