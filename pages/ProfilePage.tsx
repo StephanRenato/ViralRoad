@@ -3,7 +3,7 @@ import { User, PlanType } from '../types';
 import { supabase } from '../services/supabase';
 import { 
   User as UserIcon, LogOut, Save, Loader2, 
-  CheckCircle2, Bell, Zap, Camera, Instagram, Youtube, Music2, Trash2, Plus, Globe
+  CheckCircle2, Bell, Zap, Camera, Instagram, Youtube, Music2, Trash2, Plus, Globe, Lock, ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Platform } from '../types';
@@ -28,6 +28,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
   });
 
   const [newSocial, setNewSocial] = useState({ platform: Platform.Instagram, url: '' });
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState({ text: '', type: '' });
 
   useEffect(() => {
     setLocalProfile({
@@ -123,6 +127,32 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     }
   };
 
+  const handleChangePassword = async () => {
+    if (!newPassword || newPassword !== confirmPassword) {
+      setPasswordMsg({ text: 'Senhas não conferem ou vazias', type: 'error' });
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPasswordMsg({ text: 'Mínimo 8 caracteres', type: 'error' });
+      return;
+    }
+
+    setChangingPassword(true);
+    setPasswordMsg({ text: '', type: '' });
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (error) throw error;
+      setPasswordMsg({ text: 'Senha atualizada com sucesso!', type: 'success' });
+      setNewPassword('');
+      setConfirmPassword('');
+      setTimeout(() => setPasswordMsg({ text: '', type: '' }), 5000);
+    } catch (e: any) {
+      setPasswordMsg({ text: e.message || 'Erro ao atualizar senha', type: 'error' });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-10 space-y-10 animate-in fade-in duration-500 pb-32 max-w-5xl mx-auto">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
@@ -163,6 +193,58 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         </div>
 
         <div className="space-y-6 pt-8 border-t dark:border-zinc-800">
+            <h4 className="text-[10px] font-black uppercase text-zinc-400 italic flex items-center gap-2">
+               <ShieldCheck size={14} className="text-yellow-400" /> Segurança da Conta
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+               <div className="space-y-4">
+                  <div className="relative">
+                    <Lock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input 
+                      type="password" 
+                      placeholder="Nova Senha" 
+                      value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)}
+                      className="w-full bg-zinc-50 dark:bg-zinc-800/50 p-4 pl-12 rounded-2xl text-xs font-bold border dark:border-zinc-800 outline-none focus:border-yellow-400" 
+                    />
+                  </div>
+                  <div className="relative">
+                    <Lock size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input 
+                      type="password" 
+                      placeholder="Confirmar Nova Senha" 
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      className="w-full bg-zinc-50 dark:bg-zinc-800/50 p-4 pl-12 rounded-2xl text-xs font-bold border dark:border-zinc-800 outline-none focus:border-yellow-400" 
+                    />
+                  </div>
+               </div>
+               <div className="flex flex-col justify-center gap-4">
+                  <button 
+                    onClick={handleChangePassword}
+                    disabled={changingPassword || !newPassword}
+                    className="w-full py-4 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-yellow-400 hover:text-black transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {changingPassword ? <Loader2 className="animate-spin" size={14} /> : <ShieldCheck size={14} />}
+                    ATUALIZAR SENHA
+                  </button>
+                  <AnimatePresence>
+                    {passwordMsg.text && (
+                      <motion.p 
+                        initial={{ opacity: 0, y: -10 }} 
+                        animate={{ opacity: 1, y: 0 }} 
+                        exit={{ opacity: 0 }}
+                        className={`text-[9px] font-black uppercase text-center italic ${passwordMsg.type === 'success' ? 'text-green-500' : 'text-red-500'}`}
+                      >
+                        {passwordMsg.text}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+               </div>
+            </div>
+         </div>
+
+         <div className="space-y-6 pt-8 border-t dark:border-zinc-800">
             <h4 className="text-[10px] font-black uppercase text-zinc-400 italic flex items-center gap-2">
                <Globe size={14} className="text-yellow-400" /> Contas Conectadas
             </h4>
