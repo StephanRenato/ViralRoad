@@ -3,9 +3,10 @@ import { User, PlanType } from '../types';
 import { supabase } from '../services/supabase';
 import { 
   User as UserIcon, LogOut, Save, Loader2, 
-  CheckCircle2, Bell, Zap, Camera
+  CheckCircle2, Bell, Zap, Camera, Instagram, Youtube, Music2, Trash2, Plus, Globe
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Platform } from '../types';
 
 interface ProfilePageProps {
   user: User;
@@ -23,7 +24,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     specialization: user.specialization || '',
     notificationsAiDaily: user.notificationsAiDaily ?? true,
     notificationsEngagement: user.notificationsEngagement ?? true,
+    socialProfiles: user.socialProfiles || []
   });
+
+  const [newSocial, setNewSocial] = useState({ platform: Platform.Instagram, url: '' });
 
   useEffect(() => {
     setLocalProfile({
@@ -31,6 +35,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
       specialization: user.specialization || '',
       notificationsAiDaily: user.notificationsAiDaily ?? true,
       notificationsEngagement: user.notificationsEngagement ?? true,
+      socialProfiles: user.socialProfiles || []
     });
   }, [user]);
 
@@ -42,6 +47,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         .update({
           name: localProfile.name,
           specialization: localProfile.specialization,
+          social_profiles: localProfile.socialProfiles,
           settings: {
              notifications_ai_daily: localProfile.notificationsAiDaily,
              notifications_engagement: localProfile.notificationsEngagement
@@ -97,6 +103,86 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
                  </div>
               </div>
            </div>
+        </div>
+
+        <div className="space-y-6 pt-8 border-t dark:border-zinc-800">
+            <h4 className="text-[10px] font-black uppercase text-zinc-400 italic flex items-center gap-2">
+               <Globe size={14} className="text-yellow-400" /> Contas Conectadas
+            </h4>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {localProfile.socialProfiles.map((profile, idx) => (
+                  <div key={idx} className="flex items-center justify-between p-4 bg-zinc-50 dark:bg-zinc-800/30 rounded-2xl border dark:border-zinc-800/50">
+                     <div className="flex items-center gap-3">
+                        <div className="p-2 bg-white dark:bg-zinc-800 rounded-xl">
+                           {profile.platform === Platform.Instagram && <Instagram size={16} className="text-pink-500" />}
+                           {profile.platform === Platform.TikTok && <Music2 size={16} className="text-cyan-400" />}
+                           {profile.platform === Platform.YouTube && <Youtube size={16} className="text-red-500" />}
+                           {profile.platform === Platform.Kwai && <Zap size={16} className="text-yellow-400" />}
+                        </div>
+                        <div>
+                           <p className="text-[10px] font-black uppercase italic">{profile.platform}</p>
+                           <p className="text-[9px] font-bold text-zinc-500 truncate max-w-[150px]">{profile.username || profile.url}</p>
+                        </div>
+                     </div>
+                     <button 
+                        onClick={() => {
+                           const updated = localProfile.socialProfiles.filter((_, i) => i !== idx);
+                           setLocalProfile({...localProfile, socialProfiles: updated});
+                        }}
+                        className="p-2 text-zinc-400 hover:text-red-500 transition-colors"
+                     >
+                        <Trash2 size={14} />
+                     </button>
+                  </div>
+               ))}
+
+               <div className="p-4 bg-zinc-50 dark:bg-zinc-800/10 rounded-2xl border-2 border-dashed border-zinc-200 dark:border-zinc-800 flex flex-col gap-3">
+                  <div className="flex gap-2">
+                     <select 
+                        value={newSocial.platform} 
+                        onChange={e => setNewSocial({...newSocial, platform: e.target.value as Platform})}
+                        className="bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl px-2 py-2 text-[10px] font-black uppercase outline-none focus:border-yellow-400"
+                     >
+                        <option value={Platform.Instagram}>Instagram</option>
+                        <option value={Platform.TikTok}>TikTok</option>
+                        <option value={Platform.YouTube}>YouTube</option>
+                        <option value={Platform.Kwai}>Kwai</option>
+                     </select>
+                     <input 
+                        type="text" 
+                        placeholder="URL do Perfil" 
+                        value={newSocial.url}
+                        onChange={e => setNewSocial({...newSocial, url: e.target.value})}
+                        className="flex-1 bg-white dark:bg-zinc-900 border dark:border-zinc-800 rounded-xl px-3 py-2 text-[10px] font-bold outline-none focus:border-yellow-400"
+                     />
+                  </div>
+                  <button 
+                     onClick={() => {
+                        if (!newSocial.url) return;
+                        const exists = localProfile.socialProfiles.some(p => p.platform === newSocial.platform);
+                        if (exists) {
+                           alert(`Você já tem um perfil de ${newSocial.platform} conectado.`);
+                           return;
+                        }
+                        const newEntry = {
+                           platform: newSocial.platform,
+                           url: newSocial.url,
+                           username: newSocial.url.split('/').pop() || '',
+                           normalized_metrics: { followers: 0, following: 0, likes: 0, posts: 0, views: 0, engagement_rate: 0, bio: '', avatar_url: '', external_link: '', verified: false, is_private: false },
+                           analysis_ai: null,
+                           raw_apify_data: null,
+                           last_sync: new Date().toISOString()
+                        };
+                        setLocalProfile({...localProfile, socialProfiles: [...localProfile.socialProfiles, newEntry]});
+                        setNewSocial({ platform: Platform.Instagram, url: '' });
+                     }}
+                     className="w-full py-2 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
+                  >
+                     <Plus size={12} /> Adicionar Conta
+                  </button>
+               </div>
+            </div>
         </div>
 
         <div className="flex justify-end pt-8">
