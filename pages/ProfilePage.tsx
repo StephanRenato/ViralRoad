@@ -42,20 +42,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
   const handleSave = async () => {
     setSaving(true);
     try {
-      // Usamos upsert para garantir que o registro seja criado caso não exista (Fast Track/Novos Usuários)
+      // Simplificando o upsert para evitar erro de colunas inexistentes (como updated_at)
+      const payload = {
+        id: user.id,
+        name: localProfile.name,
+        specialization: localProfile.specialization,
+        social_profiles: localProfile.socialProfiles,
+        settings: {
+           notifications_ai_daily: localProfile.notificationsAiDaily,
+           notifications_engagement: localProfile.notificationsEngagement
+        }
+      };
+
       const { error } = await supabase
         .from('profiles')
-        .upsert({
-          id: user.id,
-          name: localProfile.name,
-          specialization: localProfile.specialization,
-          social_profiles: localProfile.socialProfiles,
-          settings: {
-             notifications_ai_daily: localProfile.notificationsAiDaily,
-             notifications_engagement: localProfile.notificationsEngagement
-          },
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' });
+        .upsert(payload, { onConflict: 'id' });
 
       if (error) throw error;
       
@@ -63,7 +64,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
       if (onRefreshUser) onRefreshUser();
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (e: any) {
-      console.error("Erro ao salvar perfil:", e);
+      console.error("Erro detalhado ao salvar perfil:", e);
+      // Se o erro for sobre uma coluna específica, o alert agora mostrará
       alert(`Erro ao salvar: ${e.message || 'Verifique sua conexão'}`);
     } finally {
       setSaving(false);

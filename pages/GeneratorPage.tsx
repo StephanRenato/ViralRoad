@@ -249,8 +249,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
           .from('usage_limits')
           .upsert({ 
             user_id: authUser.id, 
-            used_this_month: newUsedCount,
-            updated_at: new Date().toISOString()
+            used_this_month: newUsedCount
           }, { onConflict: 'id' });
       }
 

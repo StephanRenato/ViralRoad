@@ -145,8 +145,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       
       await supabase.from('profiles').upsert({ 
         id: user.id,
-        social_profiles: updated,
-        updated_at: new Date().toISOString()
+        social_profiles: updated
       }, { onConflict: 'id' });
       
       onRefreshUser();
