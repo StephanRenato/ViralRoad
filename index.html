@@ -34,6 +34,25 @@
   </head>
   <body class="text-zinc-900 dark:text-zinc-100 transition-colors duration-200">
     <div id="root"></div>
+    <script>
+      // Proteção contra sobrescrita do fetch em ambientes restritos
+      (function() {
+        const originalFetch = window.fetch;
+        try {
+          Object.defineProperty(window, 'fetch', {
+            configurable: false,
+            enumerable: true,
+            get: function() { return originalFetch; },
+            set: function() { 
+              console.warn('Tentativa de sobrescrever window.fetch bloqueada para evitar TypeError.');
+            }
+          });
+        } catch (e) {
+          // Se já for apenas getter, o erro já aconteceria. 
+          // Aqui apenas garantimos que não tentaremos mudar se falhar.
+        }
+      })();
+    </script>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

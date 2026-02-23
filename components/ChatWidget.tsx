@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Send, X, Zap } from 'lucide-react';
-import { GoogleGenAI } from '@google/genai';
 import { User } from '../types';
 
 interface Message {
@@ -33,7 +32,7 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
     setIsTyping(true);
 
     try {
-      const response = await fetch('/.netlify/functions/ia-proxy', {
+      const response = await fetch('/api/ia-proxy', {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

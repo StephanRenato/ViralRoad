@@ -154,6 +154,7 @@ export interface AnalysisAi {
     topic: string;
     reason: string;
   };
+  tactics?: string[];
 }
 
 export interface SocialProfile {

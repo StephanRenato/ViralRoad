@@ -8,11 +8,12 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
-      // Polyfill process.env para o navegador de forma segura
-      // Em produção (Netlify), estas variáveis serão injetadas pelo ambiente de build se necessário,
-      // mas o ideal é usar as funções serverless para não expor as chaves.
-      'process.env.API_KEY': JSON.stringify(env.API_KEY || ''),
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.API_KEY || ''),
       'process.env.APIFY_TOKEN': JSON.stringify(env.APIFY_TOKEN || ''),
+    },
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
     },
     build: {
       outDir: 'dist',
