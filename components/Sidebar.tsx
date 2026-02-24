@@ -13,7 +13,8 @@ import {
   Sun,
   ShieldCheck,
   BarChart3,
-  KanbanSquare
+  KanbanSquare,
+  Coins
 } from 'lucide-react';
 import { User, PlanType } from '../types';
 import { supabase } from '../services/supabase';
@@ -66,6 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
   ];
 
   const isPro = user.currentPlan === PlanType.Pro;
+  const isTrial = user.subscriptionStatus === 'trialing';
   const used = user.usedBlueprints || 0;
   const limit = user.monthlyLimit || 5;
   const progress = Math.min((used / limit) * 100, 100);
@@ -135,8 +137,20 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
             <div className="space-y-2.5">
               <div className="flex justify-between items-end text-[10px] font-black uppercase tracking-widest italic leading-none">
                 <span className="flex items-center gap-1.5 text-zinc-400 dark:text-zinc-500">
-                  <Zap size={11} className="text-yellow-400" fill="currentColor" />
-                  CRÉDITOS DE GERAÇÃO
+                  {isTrial ? (
+                    <>
+                      <div className="relative">
+                        <Coins size={11} className="text-yellow-400" fill="currentColor" />
+                        <Zap size={6} className="absolute -top-1 -right-1 text-yellow-400 fill-yellow-400" />
+                      </div>
+                      GERAÇÃO GRÁTIS DE BLUEPRINTS
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={11} className="text-yellow-400" fill="currentColor" />
+                      CRÉDITOS DE GERAÇÃO
+                    </>
+                  )}
                 </span>
                 <span className="text-zinc-900 dark:text-zinc-100">
                   {used}<span className="text-zinc-400 dark:text-zinc-600 font-bold mx-0.5">/</span>{limit >= 999999 ? '∞' : limit}

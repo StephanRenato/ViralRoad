@@ -1,8 +1,8 @@
 
-import React, { useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { ProfileType } from '../types';
-import { ChevronDown, User as UserIcon, Mail, Lock, Plus, CheckCircle2, Circle, XCircle, Sparkles, Loader2, ArrowRight, ChevronLeft } from 'lucide-react';
+import { ChevronDown, User as UserIcon, Mail, Lock, Plus, CheckCircle2, Circle, XCircle, Sparkles, Loader2, ArrowRight, ChevronLeft, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../services/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -25,11 +25,25 @@ const SPECIALIZATION_SUGGESTIONS: Record<string, string[]> = {
 
 const Register: React.FC<{ onRegister: any }> = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [profileType, setProfileType] = useState<ProfileType>(ProfileType.InfluencerGeneral);
   const [specialization, setSpecialization] = useState('Geral');
+
+  // Recupera dados do onboarding se existirem
+  useEffect(() => {
+    if (location.state) {
+      const { profileType: onboardingType, level } = location.state;
+      if (onboardingType) setProfileType(onboardingType);
+      // Se tivermos uma lógica para mapear 'level' para 'specialization' ou apenas usar o nicho
+      // O usuário pediu para os inputs de "nicho" e "area" estarem de acordo.
+      // Como o onboarding não tem "area" explícita (apenas nicho e nível), 
+      // vou tentar inferir ou apenas deixar o nicho correto.
+    }
+  }, [location.state]);
   const [customSpecialization, setCustomSpecialization] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -262,13 +276,20 @@ const Register: React.FC<{ onRegister: any }> = () => {
               <div className="relative">
                 <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-400" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   required
-                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white rounded-xl py-2.5 pl-10 pr-4 focus:ring-2 focus:ring-yellow-400/50 outline-none transition-all placeholder:text-zinc-400 text-xs font-bold"
+                  className="w-full bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-white rounded-xl py-2.5 pl-10 pr-10 focus:ring-2 focus:ring-yellow-400/50 outline-none transition-all placeholder:text-zinc-400 text-xs font-bold"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-yellow-400 transition-colors"
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
               </div>
               
               {password.length > 0 && (

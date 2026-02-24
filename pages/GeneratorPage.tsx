@@ -54,6 +54,23 @@ const LoadingStatus = ({ messages }: { messages: string[] }) => {
   );
 };
 
+const PLACEHOLDER_SUGGESTIONS: Record<string, string> = {
+  [ProfileType.Lawyer]: "Ex: 3 segredos jurídicos que ninguém te conta sobre...",
+  [ProfileType.Finance]: "Ex: Como investir R$ 100 e ter retorno em...",
+  [ProfileType.Fitness]: "Ex: O treino definitivo para secar em 30 dias...",
+  [ProfileType.Beauty]: "Ex: Minha rotina matinal de skincare para pele...",
+  [ProfileType.Tech]: "Ex: Como automatizar seu trabalho usando IA...",
+  [ProfileType.Sales]: "Ex: O script de vendas que converte 80% dos...",
+  [ProfileType.InfluencerGeneral]: "Ex: Um dia na minha vida como criador de...",
+  [ProfileType.Comedy]: "Ex: Aquela situação engraçada que todo mundo...",
+  [ProfileType.Fashion]: "Ex: 5 looks essenciais para o verão que...",
+  [ProfileType.Travel]: "Ex: O destino secreto que você precisa visitar...",
+  [ProfileType.Education]: "Ex: Aprenda inglês em 5 minutos por dia...",
+  [ProfileType.Gastronomy]: "Ex: A receita de bolo de chocolate mais fácil...",
+  [ProfileType.Gamer]: "Ex: Review sincero do novo jogo do ano...",
+  [ProfileType.Parenting]: "Ex: Como lidar com a birra dos 2 anos...",
+};
+
 const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ user, onRefreshUser }) => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
@@ -360,7 +377,12 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
 
               <div className="space-y-4 animate-in fade-in">
                 <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400 italic">O que você quer criar hoje?</label>
-                <textarea className="w-full bg-zinc-50 dark:bg-zinc-800 border-none p-8 rounded-[2.5rem] text-xl font-bold italic outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all min-h-[160px] resize-none" placeholder="Ex: 3 segredos para advogados que querem viralizar com reels..." value={params.segment} onChange={e => setParams({...params, segment: e.target.value})} />
+                <textarea 
+                  className="w-full bg-zinc-50 dark:bg-zinc-800 border-none p-8 rounded-[2.5rem] text-xl font-bold italic outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all min-h-[160px] resize-none" 
+                  placeholder={PLACEHOLDER_SUGGESTIONS[params.profileType] || "Ex: 3 segredos para viralizar com reels..."} 
+                  value={params.segment} 
+                  onChange={e => setParams({...params, segment: e.target.value})} 
+                />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">

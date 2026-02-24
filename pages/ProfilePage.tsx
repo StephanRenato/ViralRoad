@@ -22,6 +22,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
   const [localProfile, setLocalProfile] = useState({
     name: user.name || '',
     specialization: user.specialization || '',
+    avatarUrl: user.avatarUrl || '',
     notificationsAiDaily: user.notificationsAiDaily ?? true,
     notificationsEngagement: user.notificationsEngagement ?? true,
     socialProfiles: user.socialProfiles || []
@@ -37,6 +38,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     setLocalProfile({
       name: user.name || '',
       specialization: user.specialization || '',
+      avatarUrl: user.avatarUrl || '',
       notificationsAiDaily: user.notificationsAiDaily ?? true,
       notificationsEngagement: user.notificationsEngagement ?? true,
       socialProfiles: user.socialProfiles || []
@@ -55,6 +57,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         id: user.id,
         name: localProfile.name,
         specialization: localProfile.specialization,
+        avatar_url: localProfile.avatarUrl,
         social_profiles: localProfile.socialProfiles,
         settings: {
            notifications_ai_daily: localProfile.notificationsAiDaily,
@@ -87,6 +90,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
             data: {
               name: localProfile.name,
               specialization: localProfile.specialization,
+              avatar_url: localProfile.avatarUrl,
               social_profiles: localProfile.socialProfiles,
               settings: {
                 notifications_ai_daily: localProfile.notificationsAiDaily,
@@ -166,7 +170,33 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
       </div>
 
       <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-[3rem] p-8 md:p-10 space-y-8 shadow-xl">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div className="flex flex-col md:flex-row gap-8 items-center md:items-start">
+           <div className="relative group">
+              <div className="w-32 h-32 rounded-[2.5rem] bg-yellow-400 flex items-center justify-center text-black font-black text-3xl italic overflow-hidden shadow-2xl shadow-yellow-400/20 border-4 border-white dark:border-zinc-800">
+                 {localProfile.avatarUrl ? (
+                    <img src={localProfile.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                 ) : (
+                    <span>{localProfile.name.substring(0, 2).toUpperCase() || 'UR'}</span>
+                 )}
+              </div>
+              <div className="absolute -bottom-2 -right-2 p-3 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl shadow-xl cursor-pointer hover:scale-110 transition-transform">
+                 <Camera size={16} />
+              </div>
+           </div>
+           <div className="flex-1 space-y-4 w-full">
+              <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 italic ml-1">URL da Foto de Perfil</label>
+              <input 
+                type="text" 
+                placeholder="https://exemplo.com/foto.jpg" 
+                value={localProfile.avatarUrl} 
+                onChange={e => setLocalProfile({...localProfile, avatarUrl: e.target.value})} 
+                className="w-full bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl text-xs font-bold border dark:border-zinc-800 outline-none focus:border-yellow-400" 
+              />
+              <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest italic ml-1">Dica: Use uma URL direta de imagem (JPG, PNG).</p>
+           </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t dark:border-zinc-800">
            <div className="space-y-4">
               <h4 className="text-[10px] font-black uppercase text-zinc-400 italic flex items-center gap-2">
                  <UserIcon size={14} className="text-yellow-400" /> Identidade
