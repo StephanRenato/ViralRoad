@@ -155,9 +155,9 @@ const LibraryPage: React.FC<{ user: User }> = ({ user }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 min-h-[400px]">
         <AnimatePresence mode="popLayout">
           {loading ? (
-             <>
+             <motion.div key="skeletons" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="contents">
                 {Array.from({ length: 4 }).map((_, i) => <LibraryCardSkeleton key={i} />)}
-             </>
+             </motion.div>
           ) : contents.length > 0 ? (
             contents.map((blueprint) => (
               <motion.div 
