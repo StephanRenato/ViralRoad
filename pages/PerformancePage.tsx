@@ -17,6 +17,7 @@ import {
   fetchInstagramProfileData, 
   fetchYouTubeProfileData, 
   fetchKwaiProfileData,
+  fetchInstagramPosts,
   getMockProfileData
 } from '../services/apifyService';
 import { normalizeProfile } from '../services/normalize';
@@ -103,7 +104,21 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       addLog(`Conectando ao gateway social: ${activePlatform}...`);
       
       const rawResponse = await analisarPerfil({ platform: activePlatform, url: urlToUse });
-      setProgress(40);
+      setProgress(30);
+      
+      let postsData = [];
+      if (platformKey === 'instagram') {
+        addLog(`Buscando métricas detalhadas de postagens...`);
+        try {
+          postsData = await fetchInstagramPosts(urlToUse, 10);
+          addLog(`${postsData.length} postagens recentes analisadas.`);
+        } catch (postErr) {
+          console.warn("Erro ao buscar posts:", postErr);
+          addLog(`Aviso: Falha ao buscar posts detalhados.`);
+        }
+      }
+      
+      setProgress(50);
       addLog(`Dados brutos extraídos. Normalizando métricas...`);
 
       const normalized = normalizeProfile(rawResponse, platformKey);
@@ -143,6 +158,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
           diagnostic: { ...analysisRaw.diagnostic, status_label: score.insight }
         },
         raw_apify_data: rawResponse,
+        recent_posts: postsData,
         last_sync: new Date().toISOString()
       };
 
@@ -303,6 +319,40 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                    <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">"{analysis?.diagnostic?.content_strategy_advice}"</p>
                 </div>
              </div>
+
+             {currentProfile?.recent_posts && currentProfile.recent_posts.length > 0 && (
+               <div className="space-y-6">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Layers size={18} /></div>
+                    <h4 className="text-sm font-black uppercase italic tracking-widest">Análise de Conteúdo Recente</h4>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                    {currentProfile.recent_posts.slice(0, 5).map((post: any, idx: number) => (
+                      <div key={idx} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-lg group hover:border-yellow-400 transition-all">
+                        <div className="aspect-square relative overflow-hidden">
+                          <img 
+                            src={post.displayUrl || post.thumbnailUrl || `https://picsum.photos/seed/${idx}/400/400`} 
+                            alt="Post" 
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white">
+                            <div className="flex items-center gap-1 font-black text-xs"><Heart size={14} fill="currentColor" /> {post.likesCount || 0}</div>
+                            <div className="flex items-center gap-1 font-black text-xs"><Clapperboard size={14} fill="currentColor" /> {post.videoViewCount || 0}</div>
+                          </div>
+                        </div>
+                        <div className="p-4 space-y-2">
+                          <p className="text-[9px] font-bold text-zinc-500 line-clamp-2 italic">"{post.caption || 'Sem legenda'}"</p>
+                          <div className="flex justify-between items-center pt-2 border-t dark:border-zinc-800">
+                            <span className="text-[8px] font-black uppercase text-zinc-400">{new Date(post.timestamp).toLocaleDateString()}</span>
+                            <a href={post.url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400"><ExternalLink size={12} /></a>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+               </div>
+             )}
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {auditResult && (

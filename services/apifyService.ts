@@ -49,9 +49,19 @@ export const mapToAppMetrics = (normalized: any): NormalizedMetrics => {
 };
 
 export async function fetchInstagramProfileData(url: string) {
-  const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { directUrls: [url], resultsLimit: 1 });
+  const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { directUrls: [url], resultsLimit: 1, resultsType: 'details' });
   const normalized = normalizeProfile(items, "instagram");
   return { normalized: mapToAppMetrics(normalized), raw: items[0] };
+}
+
+export async function fetchInstagramPosts(url: string, limit: number = 20) {
+  const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { 
+    directUrls: [url], 
+    resultsType: 'posts', 
+    resultsLimit: limit,
+    addParentData: false
+  });
+  return items;
 }
 
 export async function fetchTikTokProfileData(url: string) {

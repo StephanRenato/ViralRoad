@@ -46,7 +46,7 @@ const App: React.FC = () => {
 
   // Função auxiliar para processar dados brutos do banco ou fallback
   const processUserData = (authUser: any, profile: any, usage: any) => {
-    const isSpecialUser = authUser.email?.toLowerCase() === 'stephan_renato@hotmail.com';
+    const isSpecialUser = authUser.email?.toLowerCase() === 'stephan_renato@hotmail.com' || authUser.email?.toLowerCase() === 'admin@admin';
     
     // Fallbacks inteligentes se o banco falhar ou demorar
     const safeProfileType = (profile?.profile_type as ProfileType) || 

@@ -56,6 +56,19 @@ const Register: React.FC<{ onRegister: any }> = () => {
 
   const isPasswordStrong = passwordStrength === passwordCriteria.length;
 
+  const validateEmail = (email: string) => {
+    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!re.test(email)) return false;
+    
+    const disposableDomains = [
+      'tempmail.com', 'throwawaymail.com', 'mailinator.com', 'yopmail.com', 
+      'guerrillamail.com', '10minutemail.com', 'temp-mail.org', 'temp-mail.com',
+      'dispostable.com', 'getnada.com', 'maildrop.cc'
+    ];
+    const domain = email.split('@')[1]?.toLowerCase();
+    return !disposableDomains.includes(domain);
+  };
+
   const getStrengthColor = () => {
     if (passwordStrength <= 1) return 'bg-red-500';
     if (passwordStrength === 2) return 'bg-orange-500';
@@ -67,6 +80,11 @@ const Register: React.FC<{ onRegister: any }> = () => {
     e.preventDefault();
     if (!isPasswordStrong) {
       setError('Sua senha não atende aos critérios de segurança.');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError('Por favor, use um endereço de e-mail real e válido. E-mails temporários não são permitidos.');
       return;
     }
     

@@ -20,6 +20,28 @@ const Login: React.FC<{ onLogin: any }> = () => {
     setMessage('');
 
     try {
+      // Lógica de conta DEMO
+      if (email === 'admin@admin' && password === '12345678') {
+        // Simula login bem sucedido para o admin
+        // No App.tsx trataremos o status PRO
+        const { data, error: demoError } = await supabase.auth.signInWithPassword({
+          email: 'admin@admin',
+          password: '12345678',
+        });
+        
+        if (demoError) {
+          // Se não existir, tentamos criar ou apenas falhamos se o Supabase não permitir
+          // Mas para o teste, vamos assumir que o usuário pode ser "fake" se o Supabase falhar
+          // No entanto, o melhor é tentar o login real primeiro.
+          // Se falhar, podemos tentar um "bypass" se o ambiente permitir, 
+          // mas o Supabase Auth precisa de um usuário real.
+          // Vou assumir que o admin@admin existe ou será criado.
+          throw demoError;
+        }
+        if (data?.session) navigate('/dashboard');
+        return;
+      }
+
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email,
         password,
