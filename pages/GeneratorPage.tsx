@@ -54,21 +54,29 @@ const LoadingStatus = ({ messages }: { messages: string[] }) => {
   );
 };
 
-const PLACEHOLDER_SUGGESTIONS: Record<string, string> = {
-  [ProfileType.Lawyer]: "Ex: 3 segredos jurídicos que ninguém te conta sobre...",
-  [ProfileType.Finance]: "Ex: Como investir R$ 100 e ter retorno em...",
-  [ProfileType.Fitness]: "Ex: O treino definitivo para secar em 30 dias...",
-  [ProfileType.Beauty]: "Ex: Minha rotina matinal de skincare para pele...",
-  [ProfileType.Tech]: "Ex: Como automatizar seu trabalho usando IA...",
-  [ProfileType.Sales]: "Ex: O script de vendas que converte 80% dos...",
-  [ProfileType.InfluencerGeneral]: "Ex: Um dia na minha vida como criador de...",
-  [ProfileType.Comedy]: "Ex: Aquela situação engraçada que todo mundo...",
-  [ProfileType.Fashion]: "Ex: 5 looks essenciais para o verão que...",
-  [ProfileType.Travel]: "Ex: O destino secreto que você precisa visitar...",
-  [ProfileType.Education]: "Ex: Aprenda inglês em 5 minutos por dia...",
-  [ProfileType.Gastronomy]: "Ex: A receita de bolo de chocolate mais fácil...",
-  [ProfileType.Gamer]: "Ex: Review sincero do novo jogo do ano...",
-  [ProfileType.Parenting]: "Ex: Como lidar com a birra dos 2 anos...",
+const getPlaceholder = (profileType: ProfileType, specialization: string) => {
+  const suggestions: Record<string, string> = {
+    [ProfileType.Lawyer]: "Ex: 3 segredos jurídicos que ninguém te conta sobre...",
+    [ProfileType.Finance]: "Ex: Como investir R$ 100 e ter retorno em...",
+    [ProfileType.Fitness]: "Ex: O treino definitivo para secar em 30 dias...",
+    [ProfileType.Beauty]: "Ex: Minha rotina matinal de skincare para pele...",
+    [ProfileType.Tech]: "Ex: Como automatizar seu trabalho usando IA...",
+    [ProfileType.Sales]: "Ex: O script de vendas que converte 80% dos...",
+    [ProfileType.InfluencerGeneral]: "Ex: Um dia na minha vida como criador de...",
+    [ProfileType.Comedy]: "Ex: Aquela situação engraçada que todo mundo...",
+    [ProfileType.Fashion]: "Ex: 5 looks essenciais para o verão que...",
+    [ProfileType.Travel]: "Ex: O destino secreto que você precisa visitar...",
+    [ProfileType.Education]: "Ex: Aprenda inglês em 5 minutos por dia...",
+    [ProfileType.Gastronomy]: "Ex: A receita de bolo de chocolate mais fácil...",
+    [ProfileType.Gamer]: "Ex: Review sincero do novo jogo do ano...",
+    [ProfileType.Parenting]: "Ex: Como lidar com a birra dos 2 anos...",
+  };
+
+  if (specialization && specialization !== 'Geral' && specialization !== 'Outro') {
+    return `Ex: Como criar conteúdo viral de ${specialization} para ${profileType}...`;
+  }
+
+  return suggestions[profileType] || "Ex: 3 segredos para viralizar com reels...";
 };
 
 const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ user, onRefreshUser }) => {
@@ -379,7 +387,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
                 <label className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400 italic">O que você quer criar hoje?</label>
                 <textarea 
                   className="w-full bg-zinc-50 dark:bg-zinc-800 border-none p-8 rounded-[2.5rem] text-xl font-bold italic outline-none focus:ring-2 focus:ring-yellow-400/20 transition-all min-h-[160px] resize-none" 
-                  placeholder={PLACEHOLDER_SUGGESTIONS[params.profileType] || "Ex: 3 segredos para viralizar com reels..."} 
+                  placeholder={getPlaceholder(params.profileType, params.specialization)} 
                   value={params.segment} 
                   onChange={e => setParams({...params, segment: e.target.value})} 
                 />

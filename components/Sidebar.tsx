@@ -152,8 +152,12 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
                     </>
                   )}
                 </span>
-                <span className="text-zinc-900 dark:text-zinc-100">
+                <span className="text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
                   {used}<span className="text-zinc-400 dark:text-zinc-600 font-bold mx-0.5">/</span>{limit >= 999999 ? '∞' : limit}
+                  <div className="relative">
+                    <Coins size={11} className="text-yellow-400" fill="currentColor" />
+                    <Zap size={6} className="absolute -top-1 -right-1 text-yellow-400 fill-yellow-400" />
+                  </div>
                 </span>
               </div>
               <div className="h-2 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden p-[2px] border border-zinc-200 dark:border-zinc-700/50">

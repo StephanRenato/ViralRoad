@@ -38,10 +38,7 @@ const Register: React.FC<{ onRegister: any }> = () => {
     if (location.state) {
       const { profileType: onboardingType, level } = location.state;
       if (onboardingType) setProfileType(onboardingType);
-      // Se tivermos uma lógica para mapear 'level' para 'specialization' ou apenas usar o nicho
-      // O usuário pediu para os inputs de "nicho" e "area" estarem de acordo.
-      // Como o onboarding não tem "area" explícita (apenas nicho e nível), 
-      // vou tentar inferir ou apenas deixar o nicho correto.
+      if (level) setSpecialization(level);
     }
   }, [location.state]);
   const [customSpecialization, setCustomSpecialization] = useState('');

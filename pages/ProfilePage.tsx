@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { User, PlanType } from '../types';
 import { supabase } from '../services/supabase';
 import { 
@@ -33,6 +33,23 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
   const [confirmPassword, setConfirmPassword] = useState('');
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState({ text: '', type: '' });
+  const [showPasswordPopup, setShowPasswordPopup] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("A imagem deve ter no máximo 2MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLocalProfile({ ...localProfile, avatarUrl: reader.result as string });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   useEffect(() => {
     setLocalProfile({
@@ -179,20 +196,31 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
                     <span>{localProfile.name.substring(0, 2).toUpperCase() || 'UR'}</span>
                  )}
               </div>
-              <div className="absolute -bottom-2 -right-2 p-3 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl shadow-xl cursor-pointer hover:scale-110 transition-transform">
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="absolute -bottom-2 -right-2 p-3 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl shadow-xl cursor-pointer hover:scale-110 transition-transform"
+              >
                  <Camera size={16} />
-              </div>
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                onChange={handleFileChange} 
+                accept="image/*" 
+                className="hidden" 
+              />
            </div>
            <div className="flex-1 space-y-4 w-full">
-              <label className="text-[9px] font-black uppercase tracking-widest text-zinc-400 italic ml-1">URL da Foto de Perfil</label>
-              <input 
-                type="text" 
-                placeholder="https://exemplo.com/foto.jpg" 
-                value={localProfile.avatarUrl} 
-                onChange={e => setLocalProfile({...localProfile, avatarUrl: e.target.value})} 
-                className="w-full bg-zinc-50 dark:bg-zinc-800/50 p-4 rounded-2xl text-xs font-bold border dark:border-zinc-800 outline-none focus:border-yellow-400" 
-              />
-              <p className="text-[8px] font-bold text-zinc-500 uppercase tracking-widest italic ml-1">Dica: Use uma URL direta de imagem (JPG, PNG).</p>
+              <h3 className="text-2xl font-black italic uppercase text-zinc-900 dark:text-white">{localProfile.name || 'Seu Nome'}</h3>
+              <p className="text-zinc-500 font-bold text-xs uppercase tracking-[0.2em] italic">Clique no ícone da câmera para alterar sua foto de perfil.</p>
+              <div className="flex gap-2">
+                 <span className="px-3 py-1 bg-yellow-400/10 text-yellow-500 rounded-lg text-[8px] font-black uppercase tracking-widest border border-yellow-400/20">
+                    {user.currentPlan}
+                 </span>
+                 <span className="px-3 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-lg text-[8px] font-black uppercase tracking-widest border dark:border-zinc-700">
+                    {user.profileType}
+                 </span>
+              </div>
            </div>
         </div>
 
@@ -378,6 +406,35 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
               <CheckCircle2 size={18} /> {successMsg}
            </motion.div>
          )}
+      </AnimatePresence>
+      {/* Password Update Modal */}
+      <AnimatePresence>
+        {showPasswordPopup && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-zinc-900 w-full max-w-md rounded-[2.5rem] p-10 text-center space-y-6 shadow-2xl border border-zinc-200 dark:border-zinc-800"
+            >
+              <div className="w-20 h-20 bg-green-500/10 text-green-500 rounded-3xl flex items-center justify-center mx-auto">
+                <ShieldCheck size={40} />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black italic uppercase text-zinc-900 dark:text-white">Senha Atualizada</h3>
+                <p className="text-zinc-500 text-xs font-bold italic leading-relaxed">
+                  Sua segurança foi reforçada. A partir do seu próximo login, você deverá utilizar sua nova senha.
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowPasswordPopup(false)}
+                className="w-full py-5 bg-zinc-900 dark:bg-white text-white dark:text-black rounded-2xl font-black text-[10px] uppercase tracking-widest hover:scale-105 transition-all shadow-xl"
+              >
+                ENTENDIDO
+              </button>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
     </div>
   );
