@@ -4,10 +4,10 @@ import { normalizeProfile } from './normalize';
 const APIFY_TOKEN_FALLBACK = 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
 
 const ACTOR_IDS = {
-  TIKTOK: 'clockworks/tiktok-scraper',
-  INSTAGRAM: 'apify/instagram-scraper',
-  YOUTUBE: 'streamers/youtube-channel-scraper',
-  KWAI: 'luan.r.dev/kwai-profile-scraper'
+  TIKTOK: 'clockworks~tiktok-scraper',
+  INSTAGRAM: 'apify~instagram-scraper',
+  YOUTUBE: 'streamers~youtube-channel-scraper',
+  KWAI: 'luan.r.dev~kwai-profile-scraper'
 };
 
 async function callApifyActor(actorId: string, input: any): Promise<any> {

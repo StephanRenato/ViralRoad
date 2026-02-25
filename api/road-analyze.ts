@@ -3,10 +3,10 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 const APIFY_TOKEN = process.env.APIFY_TOKEN || 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
 
 const ACTOR_IDS: Record<string, string> = {
-  instagram: 'apify/instagram-scraper',
-  tiktok: 'clockworks/tiktok-scraper',
-  youtube: 'streamers/youtube-channel-scraper',
-  kwai: 'luan.r.dev/kwai-profile-scraper'
+  instagram: 'apify~instagram-scraper',
+  tiktok: 'clockworks~tiktok-scraper',
+  youtube: 'streamers~youtube-channel-scraper',
+  kwai: 'luan.r.dev~kwai-profile-scraper'
 };
 
 const getMockData = (platform: string, url: string) => {

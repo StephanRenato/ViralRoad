@@ -23,10 +23,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
-    if (!apiKey) {
-       console.error("API_KEY is missing in server environment");
-       return res.status(500).json({ error: "Server Configuration Error: API Key missing." });
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
+       console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in server environment");
+       return res.status(500).json({ error: "IA_CONFIGURATION_ERROR", message: "Chave API Gemini inválida ou ausente no servidor." });
     }
 
     const ai = new GoogleGenAI({ apiKey });

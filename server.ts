@@ -8,10 +8,10 @@ dotenv.config();
 const APIFY_TOKEN = process.env.APIFY_TOKEN || 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
 
 const ACTOR_IDS: Record<string, string> = {
-  instagram: 'apify/instagram-scraper',
-  tiktok: 'clockworks/tiktok-scraper',
-  youtube: 'streamers/youtube-channel-scraper',
-  kwai: 'luan.r.dev/kwai-profile-scraper'
+  instagram: 'apify~instagram-scraper',
+  tiktok: 'clockworks~tiktok-scraper',
+  youtube: 'streamers~youtube-channel-scraper',
+  kwai: 'luan.r.dev~kwai-profile-scraper'
 };
 
 const cleanJson = (text: string): string => {
@@ -39,11 +39,15 @@ async function startServer() {
   app.post("/api/ia-proxy", async (req, res) => {
     console.log("IA Proxy Request received");
     try {
-      const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+      // Prioritize GEMINI_API_KEY as per platform guidelines
+      const apiKey = process.env.GEMINI_API_KEY;
       
-      if (!apiKey) {
-         console.error("API KEY MISSING");
-         return res.status(500).json({ error: "SERVER CONFIGURATION ERROR: API KEY MISSING" });
+      if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
+         console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in environment.");
+         return res.status(500).json({ 
+           error: "IA_CONFIGURATION_ERROR", 
+           message: "A chave da API Gemini não foi configurada corretamente no ambiente." 
+         });
       }
 
       const ai = new GoogleGenAI({ apiKey });
