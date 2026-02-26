@@ -1,7 +1,7 @@
 
 import { Handler } from '@netlify/functions';
 
-const APIFY_TOKEN = process.env.APIFY_TOKEN || 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
+const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 
 const ACTOR_IDS: Record<string, string> = {
   instagram: 'apify~instagram-scraper',
@@ -17,6 +17,13 @@ const handler: Handler = async (event) => {
   }
 
   try {
+    if (!APIFY_TOKEN || APIFY_TOKEN.length < 10) {
+      return { 
+        statusCode: 500, 
+        body: JSON.stringify({ error: "APIFY_CONFIGURATION_ERROR", message: "Token Apify ausente." }) 
+      };
+    }
+
     let { platform, payload } = JSON.parse(event.body || '{}');
     
     // Normalização robusta da plataforma para evitar "Plataforma não suportada"

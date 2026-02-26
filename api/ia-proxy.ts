@@ -24,13 +24,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = (process.env.GEMINI_API_KEY || '').trim();
     
     if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
        console.error("SERVER ERROR: GEMINI_API_KEY is missing or invalid.");
-       return res.status(500).json({ error: "IA_CONFIGURATION_ERROR", message: "Chave API Gemini inválida ou ausente." });
+       return res.status(500).json({ error: "IA_CONFIGURATION_ERROR", message: "Chave API Gemini inválida ou ausente (GEMINI_API_KEY)." });
     }
 
+    console.log(`Using Gemini API Key: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);
     const ai = new GoogleGenAI({ apiKey });
     const { contents, config, model } = req.body || {};
 

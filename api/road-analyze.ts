@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const APIFY_TOKEN = process.env.APIFY_TOKEN || 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
+const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 
 const ACTOR_IDS: Record<string, string> = {
   instagram: 'apify~instagram-scraper',
@@ -45,7 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let normalized = { followers: 0, likes: 0, videos: 0, engagement: 0 };
     let rawData: any = null;
 
-    if (APIFY_TOKEN && actorId) {
+    if (APIFY_TOKEN && APIFY_TOKEN.length > 10 && actorId) {
         try {
             let payload = {};
             if (platformKey === 'tiktok') {

@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const APIFY_TOKEN = process.env.APIFY_TOKEN || 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
+const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 
 const ACTOR_IDS: Record<string, string> = {
   instagram: 'apify~instagram-scraper',
@@ -39,17 +39,17 @@ async function startServer() {
   app.post("/api/ia-proxy", async (req, res) => {
     console.log("IA Proxy Request received");
     try {
-      // Prioritize GEMINI_API_KEY as per platform guidelines
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
       
       if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-         console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in environment.");
+         console.error("CRITICAL: GEMINI_API_KEY is missing or invalid.");
          return res.status(500).json({ 
            error: "IA_CONFIGURATION_ERROR", 
-           message: "A chave da API Gemini não foi configurada corretamente no ambiente." 
+           message: "A chave da API Gemini não foi configurada corretamente no ambiente (GEMINI_API_KEY)." 
          });
       }
 
+      console.log(`Using Gemini API Key: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);
       const ai = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
 
@@ -80,6 +80,14 @@ async function startServer() {
   app.post("/api/apify-proxy", async (req, res) => {
     console.log("Apify Proxy Request received");
     try {
+      if (!APIFY_TOKEN || APIFY_TOKEN.length < 10) {
+        console.error("APIFY_TOKEN MISSING");
+        return res.status(500).json({ 
+          error: "APIFY_CONFIGURATION_ERROR", 
+          message: "O token do Apify não foi configurado no ambiente (APIFY_TOKEN)." 
+        });
+      }
+
       let { platform, payload } = req.body || {};
       platform = platform ? platform.toString().toLowerCase().trim() : '';
       const actorId = ACTOR_IDS[platform];

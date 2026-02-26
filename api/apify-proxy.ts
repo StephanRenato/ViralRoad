@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const APIFY_TOKEN = process.env.APIFY_TOKEN || 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
+const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 
 const ACTOR_IDS: Record<string, string> = {
   instagram: 'apify~instagram-scraper',
@@ -15,6 +15,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    if (!APIFY_TOKEN || APIFY_TOKEN.length < 10) {
+      return res.status(500).json({ error: "APIFY_CONFIGURATION_ERROR", message: "Token Apify ausente." });
+    }
+
     let { platform, payload } = req.body || {};
     platform = platform ? platform.toString().toLowerCase().trim() : '';
     const actorId = ACTOR_IDS[platform];

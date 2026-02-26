@@ -1,7 +1,7 @@
 import { NormalizedMetrics } from '../types';
 import { normalizeProfile } from './normalize';
 
-const APIFY_TOKEN_FALLBACK = 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
+const APIFY_TOKEN_FALLBACK = '';
 
 const ACTOR_IDS = {
   TIKTOK: 'clockworks~tiktok-scraper',

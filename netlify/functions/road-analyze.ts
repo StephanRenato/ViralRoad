@@ -2,7 +2,7 @@
 import type { Handler } from "@netlify/functions";
 
 // Token fallback direto do código do usuário para garantir funcionamento
-const APIFY_TOKEN = process.env.APIFY_TOKEN || 'apify_api_J8nQQGmU3omQUqNSqhFNvIcNPNMh3y3MTEp5';
+const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 
 const ACTOR_IDS: Record<string, string> = {
   instagram: 'apify~instagram-scraper',
@@ -52,7 +52,7 @@ export const handler: Handler = async (event) => {
     let rawData: any = null;
 
     // Tenta buscar no Apify se tiver token e actor
-    if (APIFY_TOKEN && actorId) {
+    if (APIFY_TOKEN && APIFY_TOKEN.length > 10 && actorId) {
         try {
             let payload = {};
             // Configuração específica de payload por plataforma
