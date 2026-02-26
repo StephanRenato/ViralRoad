@@ -57,14 +57,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 payload = { startUrls: [{ url: profileUrl }] };
             }
 
+            const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=256&timeout=55`;
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+
             const apifyResponse = await fetch(
-                `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=256`,
+                url,
                 {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
+                    signal: controller.signal
                 }
             );
+
+            clearTimeout(timeoutId);
 
             if (apifyResponse.ok) {
                 const items = await apifyResponse.json();

@@ -39,29 +39,48 @@ const handler: Handler = async (event) => {
       };
     }
 
-    // ULTRA MEMORY BOOST: Aumentado para 4096MB (4GB)
-    // Isso garante inicialização instantânea do navegador headless e evita timeouts de CPU.
-    const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=4096`;
+    // Adicionado timeout de 55 segundos para evitar 504 do gateway
+    const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=2048&timeout=55`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-    if (!response.ok) {
-        throw new Error(`Apify Error (${response.status}): ${response.statusText}`);
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+          if (response.status === 504 || response.status === 408) {
+            return {
+              statusCode: 504,
+              body: JSON.stringify({ error: "APIFY_TIMEOUT", message: "A plataforma demorou muito para responder." })
+            };
+          }
+          throw new Error(`Apify Error (${response.status}): ${response.statusText}`);
+      }
+
+      const data = await response.json();
+
+      return {
+        statusCode: 200,
+        body: JSON.stringify(data),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      };
+    } catch (fetchError: any) {
+      clearTimeout(timeoutId);
+      if (fetchError.name === 'AbortError') {
+        return { statusCode: 504, body: JSON.stringify({ error: "TIMEOUT" }) };
+      }
+      throw fetchError;
     }
-
-    const data = await response.json();
-
-    return {
-      statusCode: 200,
-      body: JSON.stringify(data),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    };
   } catch (error: any) {
     console.error("Proxy Error:", error);
     return {

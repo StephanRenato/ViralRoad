@@ -145,20 +145,41 @@ async function startServer() {
         return res.status(400).json({ error: `Plataforma '${platform}' não suportada ou inválida.` });
       }
 
-      const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=4096`;
+      // Adicionado timeout de 55 segundos para evitar 504 do gateway
+      const url = `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${APIFY_TOKEN}&memory=2048&timeout=55`;
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-      if (!response.ok) {
-          throw new Error(`Apify Error (${response.status}): ${response.statusText}`);
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+            if (response.status === 504 || response.status === 408) {
+              return res.status(504).json({ 
+                error: "APIFY_TIMEOUT", 
+                message: "A plataforma demorou muito para responder. Tente novamente em instantes." 
+              });
+            }
+            throw new Error(`Apify Error (${response.status}): ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return res.status(200).json(data);
+      } catch (fetchError: any) {
+        clearTimeout(timeoutId);
+        if (fetchError.name === 'AbortError') {
+          return res.status(504).json({ error: "TIMEOUT", message: "Tempo limite de requisição excedido." });
+        }
+        throw fetchError;
       }
-
-      const data = await response.json();
-      return res.status(200).json(data);
     } catch (error: any) {
       console.error("Proxy Error:", error);
       
