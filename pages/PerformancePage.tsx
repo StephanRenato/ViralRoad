@@ -41,7 +41,13 @@ async function analisarPerfil({ platform, url }: { platform: string, url: string
       if (platformId === 'youtube') return (await fetchYouTubeProfileData(url)).raw;
       if (platformId === 'kwai') return (await fetchKwaiProfileData(url)).raw;
       return getMockProfileData(platformId, { url });
-  } catch (error) {
+  } catch (error: any) {
+      console.error("Erro na análise real:", error);
+      // Se for erro de configuração ou autenticação, repassa o erro para o usuário
+      if (error.message?.includes("CONFIGURATION") || error.message?.includes("AUTH") || error.message?.includes("401")) {
+          throw error;
+      }
+      // Outros erros (ex: perfil não encontrado) usam Mock para não quebrar a UX
       return getMockProfileData(platformId, { url });
   }
 }
@@ -84,6 +90,16 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
   const addLog = (msg: string) => {
     setLogs(prev => [...prev, `> ${new Date().toLocaleTimeString()} | ${msg}`]);
+  };
+
+  const getPlaceholder = () => {
+    switch (activePlatform) {
+      case Platform.Instagram: return "Cole seu link (ex: instagram.com/usuario)";
+      case Platform.TikTok: return "Cole seu link (ex: tiktok.com/@usuario)";
+      case Platform.YouTube: return "Cole seu link (ex: youtube.com/@usuario)";
+      case Platform.Kwai: return "Cole seu link (ex: kwai.com/@usuario)";
+      default: return "Cole o link do seu perfil";
+    }
   };
 
   const handleConnect = async (urlOverride?: string) => {
@@ -243,7 +259,14 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <h3 className="text-3xl font-black italic uppercase text-zinc-900 dark:text-white">Relatório <span className="text-yellow-400">Social</span></h3>
                 <p className="text-zinc-500 text-xs font-bold italic uppercase tracking-widest">Conecte seu link para desbloquear a auditoria neural da Viral Road.</p>
                 <div className="space-y-4 pt-4">
-                    <input type="text" placeholder="Cole seu link (ex: instagram.com/usuario)" value={newUrl} onChange={e => setNewUrl(e.target.value)} className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-5 rounded-2xl text-center text-sm font-bold italic outline-none focus:border-yellow-400 transition-all" />
+                    <input 
+                        type="text" 
+                        placeholder={getPlaceholder()} 
+                        value={newUrl} 
+                        onChange={e => setNewUrl(e.target.value)} 
+                        className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-5 rounded-2xl text-center text-sm font-bold italic outline-none focus:border-yellow-400 transition-all" 
+                    />
+                    {urlError && <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-pulse">{urlError}</p>}
                     <button onClick={() => handleConnect()} disabled={!newUrl || addingUrl} className="w-full bg-yellow-400 text-black py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2">
                         {addingUrl ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} fill="currentColor" />} INICIAR ANÁLISE DE PERFORMANCE
                     </button>

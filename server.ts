@@ -32,7 +32,44 @@ async function startServer() {
 
   // Health check
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "Viral Road API is live" });
+    res.json({ 
+      status: "ok", 
+      message: "Viral Road API is live",
+      timestamp: new Date().toISOString(),
+      env: process.env.NODE_ENV
+    });
+  });
+
+  // Apify Health Check
+  app.get("/api/apify-health", async (req, res) => {
+    try {
+      if (!APIFY_TOKEN || APIFY_TOKEN.length < 10) {
+        return res.status(500).json({ 
+          status: "error", 
+          code: "APIFY_TOKEN_MISSING",
+          message: "APIFY_TOKEN is missing or invalid in environment." 
+        });
+      }
+      
+      const response = await fetch(`https://api.apify.com/v2/users/me?token=${APIFY_TOKEN}`);
+      if (response.ok) {
+        const data = await response.json();
+        return res.json({ 
+          status: "ok", 
+          message: "Apify connection verified", 
+          user: data.data.username,
+          proxy_actors: Object.keys(ACTOR_IDS)
+        });
+      } else {
+        return res.status(response.status).json({ 
+          status: "error", 
+          code: "APIFY_AUTH_ERROR",
+          message: `Apify returned ${response.status}: ${response.statusText}` 
+        });
+      }
+    } catch (error: any) {
+      return res.status(500).json({ status: "error", message: error.message });
+    }
   });
 
   // IA Proxy Route
@@ -72,7 +109,19 @@ async function startServer() {
 
     } catch (error: any) {
       console.error("IA Proxy Error:", error);
-      return res.status(500).json({ error: error.message || "Internal Server Error" });
+      
+      // Handle specific Google GenAI errors
+      if (error.message?.includes("API key not valid")) {
+        return res.status(401).json({ 
+          error: "INVALID_API_KEY", 
+          message: "A chave da API Gemini fornecida é inválida. Verifique suas configurações." 
+        });
+      }
+
+      return res.status(500).json({ 
+        error: "IA_PROXY_ERROR", 
+        message: error.message || "Erro interno ao processar requisição de IA." 
+      });
     }
   });
 
@@ -112,7 +161,25 @@ async function startServer() {
       return res.status(200).json(data);
     } catch (error: any) {
       console.error("Proxy Error:", error);
-      return res.status(500).json({ error: error.message || "Internal Server Error" });
+      
+      if (error.message?.includes("401")) {
+        return res.status(401).json({ 
+          error: "APIFY_AUTH_ERROR", 
+          message: "Falha na autenticação com Apify. Verifique o APIFY_TOKEN." 
+        });
+      }
+      
+      if (error.message?.includes("404")) {
+        return res.status(404).json({ 
+          error: "APIFY_ACTOR_NOT_FOUND", 
+          message: "O Actor do Apify não foi encontrado. Verifique os ACTOR_IDS." 
+        });
+      }
+
+      return res.status(500).json({ 
+        error: "APIFY_PROXY_ERROR", 
+        message: error.message || "Erro interno no proxy do Apify." 
+      });
     }
   });
 

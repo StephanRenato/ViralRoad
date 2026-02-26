@@ -77,17 +77,44 @@ export async function fetchYouTubeProfileData(url: string) {
 }
 
 export function getMockProfileData(platform: string, input: any) {
+    // Return data in a format that normalizeProfile can handle as "raw"
+    if (platform === 'instagram') {
+        return {
+            _isMock: true,
+            username: input.url?.split('/').pop() || 'user',
+            fullName: "Estrategista Road",
+            followersCount: 12500,
+            followsCount: 430,
+            postsCount: 84,
+            engagementRate: 4.2,
+            profilePicUrl: "https://picsum.photos/200",
+            biography: "Perfil em análise tática pelo Road Engine.",
+            url: input.url,
+            verified: false,
+            private: false
+        };
+    }
+    if (platform === 'tiktok') {
+        return {
+            _isMock: true,
+            authorMeta: {
+                name: input.url?.split('@').pop() || 'user',
+                nickName: "Viral Creator",
+                fans: 45000,
+                heart: 154000,
+                video: 120,
+                signature: "Criando conteúdo viral.",
+                avatar: "https://picsum.photos/200"
+            }
+        };
+    }
+    // Default mock
     return {
-        username: input.url?.split('/').pop() || 'user',
-        followers: 1250,
-        following: 430,
-        posts: 84,
-        likes: 15400,
-        engagement: 4.2,
-        avatar: "https://picsum.photos/200",
-        bio: "Perfil em análise tática pelo Road Engine.",
-        profile_url: input.url,
-        is_verified: false
+        _isMock: true,
+        username: 'user',
+        followersCount: 1000,
+        engagementRate: 3.0,
+        url: input.url
     };
 }
 
