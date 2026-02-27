@@ -96,6 +96,8 @@ async function startServer() {
         config
       });
 
+      if (!response) throw new Error("O modelo não retornou uma resposta válida.");
+
       const rawText = cleanJson(response.text || '{}');
       let parsedData;
       
@@ -162,13 +164,21 @@ async function startServer() {
         clearTimeout(timeoutId);
 
         if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({}));
+            console.error("Apify Error Body:", errorBody);
+
             if (response.status === 504 || response.status === 408) {
               return res.status(504).json({ 
                 error: "APIFY_TIMEOUT", 
                 message: "A plataforma demorou muito para responder. Tente novamente em instantes." 
               });
             }
-            throw new Error(`Apify Error (${response.status}): ${response.statusText}`);
+            
+            return res.status(response.status).json({
+              error: "APIFY_API_ERROR",
+              message: errorBody.error?.message || errorBody.message || `Erro ${response.status} no Apify`,
+              details: errorBody
+            });
         }
 
         const data = await response.json();

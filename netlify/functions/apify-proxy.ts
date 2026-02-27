@@ -83,9 +83,22 @@ const handler: Handler = async (event) => {
     }
   } catch (error: any) {
     console.error("Proxy Error:", error);
+    
+    let statusCode = 500;
+    let errorBody = { error: "APIFY_PROXY_ERROR", message: error.message || "Internal Server Error" };
+
+    if (error.message?.includes("401")) {
+      statusCode = 401;
+      errorBody = { error: "APIFY_AUTH_ERROR", message: "Falha na autenticação com Apify. Verifique o APIFY_TOKEN." };
+    } else if (error.message?.includes("404")) {
+      statusCode = 404;
+      errorBody = { error: "APIFY_ACTOR_NOT_FOUND", message: "O Actor do Apify não foi encontrado. Verifique os ACTOR_IDS." };
+    }
+
     return {
-      statusCode: 500,
-      body: JSON.stringify({ error: error.message || "Internal Server Error" }),
+      statusCode,
+      body: JSON.stringify(errorBody),
+      headers: { 'Content-Type': 'application/json' }
     };
   }
 };

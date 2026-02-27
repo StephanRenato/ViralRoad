@@ -67,6 +67,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const [addingUrl, setAddingUrl] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [urlError, setUrlError] = useState('');
+  const [diagnosticStatus, setDiagnosticStatus] = useState<any>(null);
   const [objective, setObjective] = useState('Aumentar Seguidores');
   const [auditResult, setAuditResult] = useState<any>(null);
   const [logs, setLogs] = useState<string[]>([]);
@@ -105,6 +106,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const handleConnect = async (urlOverride?: string) => {
     const urlToUse = urlOverride || newUrl;
     if (!urlToUse) return;
+    
+    // Clear diagnostic on new attempt
+    setDiagnosticStatus(null);
+    setUrlError('');
 
     setAddingUrl(true);
     setAnalyzingPlatform(activePlatform);
@@ -199,10 +204,38 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       onRefreshUser();
 
     } catch (e: any) {
-      setUrlError(e.message || "Erro na análise.");
+      console.error("Erro capturado no handleConnect:", e);
+      let errorMsg = e.message || "Erro na análise.";
+      
+      if (errorMsg.includes("APIFY_CONFIGURATION_ERROR")) {
+        errorMsg = "⚠️ ERRO DE CONFIGURAÇÃO: O token do Apify não foi encontrado no servidor. Por favor, configure a variável APIFY_TOKEN.";
+      } else if (errorMsg.includes("504") || errorMsg.includes("TIMEOUT")) {
+        errorMsg = "⏳ TEMPO EXCEDIDO: A plataforma demorou muito para responder. Isso é comum em perfis grandes ou horários de pico. Tente novamente em instantes.";
+      } else if (errorMsg.includes("401")) {
+        errorMsg = "🚫 NÃO AUTORIZADO: Sua chave de API (Gemini ou Apify) parece ser inválida ou expirou.";
+      }
+      
+      setUrlError(errorMsg);
+      addLog(`ERRO: ${errorMsg}`);
     } finally {
       setAddingUrl(false);
       setAnalyzingPlatform(null);
+    }
+  };
+
+  const runDiagnostic = async () => {
+    try {
+      addLog("Iniciando diagnóstico de conexão...");
+      const res = await fetch('/api/apify-health');
+      const data = await res.json();
+      setDiagnosticStatus(data);
+      if (data.status === 'ok') {
+        addLog(`✅ Conexão Apify OK: Usuário ${data.user}`);
+      } else {
+        addLog(`❌ Erro de Conexão: ${data.message}`);
+      }
+    } catch (e) {
+      addLog("❌ Falha ao contatar servidor de diagnóstico.");
     }
   };
 
@@ -266,7 +299,23 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                         onChange={e => setNewUrl(e.target.value)} 
                         className="w-full bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 p-5 rounded-2xl text-center text-sm font-bold italic outline-none focus:border-yellow-400 transition-all" 
                     />
-                    {urlError && <p className="text-red-500 text-[10px] font-bold uppercase tracking-widest animate-pulse">{urlError}</p>}
+                    {urlError && (
+                      <div className="space-y-2">
+                        <p className="text-red-500 text-[10px] font-black uppercase tracking-widest animate-pulse">{urlError}</p>
+                        <button 
+                          onClick={runDiagnostic}
+                          className="text-zinc-500 hover:text-yellow-400 text-[9px] font-black uppercase tracking-widest transition-colors flex items-center gap-1 mx-auto"
+                        >
+                          <Terminal size={10} /> EXECUTAR DIAGNÓSTICO DE API
+                        </button>
+                      </div>
+                    )}
+                    {diagnosticStatus && (
+                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${diagnosticStatus.status === 'ok' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                        <div className="font-black uppercase mb-1">Resultado do Diagnóstico:</div>
+                        <pre className="whitespace-pre-wrap">{JSON.stringify(diagnosticStatus, null, 2)}</pre>
+                      </div>
+                    )}
                     <button onClick={() => handleConnect()} disabled={!newUrl || addingUrl} className="w-full bg-yellow-400 text-black py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2">
                         {addingUrl ? <Loader2 className="animate-spin" size={16} /> : <Zap size={16} fill="currentColor" />} INICIAR ANÁLISE DE PERFORMANCE
                     </button>

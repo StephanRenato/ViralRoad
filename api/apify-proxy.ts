@@ -64,6 +64,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   } catch (error: any) {
     console.error("Proxy Error:", error);
-    return res.status(500).json({ error: error.message || "Internal Server Error" });
+    
+    if (error.message?.includes("401")) {
+      return res.status(401).json({ 
+        error: "APIFY_AUTH_ERROR", 
+        message: "Falha na autenticação com Apify. Verifique o APIFY_TOKEN." 
+      });
+    }
+    
+    if (error.message?.includes("404")) {
+      return res.status(404).json({ 
+        error: "APIFY_ACTOR_NOT_FOUND", 
+        message: "O Actor do Apify não foi encontrado. Verifique os ACTOR_IDS." 
+      });
+    }
+
+    return res.status(500).json({ 
+      error: "APIFY_PROXY_ERROR", 
+      message: error.message || "Erro interno no proxy do Apify." 
+    });
   }
 }
