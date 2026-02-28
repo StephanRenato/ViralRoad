@@ -88,17 +88,11 @@ async function startServer() {
     try {
       let apiKey = (process.env.GEMINI_API_KEY || '').trim();
       
-      // Fallback para a chave fornecida pelo usuário se a do ambiente estiver incorreta
-      if (!apiKey || !apiKey.startsWith('AIza')) {
-        console.log("Ambiente com chave inválida. Usando fallback fornecido pelo usuário.");
-        apiKey = 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8';
-      }
-
       if (!apiKey || apiKey.length < 10) {
         return res.status(500).json({ 
           status: "error", 
           code: "GEMINI_TOKEN_MISSING",
-          message: "A chave GEMINI_API_KEY está ausente ou é muito curta." 
+          message: "A chave GEMINI_API_KEY está ausente ou é inválida no ambiente." 
         });
       }
       
@@ -130,16 +124,12 @@ async function startServer() {
   app.post("/api/ia-proxy", async (req, res) => {
     console.log(`${new Date().toISOString()} | IA Proxy Request`);
     try {
-      let apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
       
-      if (!apiKey || !apiKey.startsWith('AIza')) {
-        apiKey = 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8';
-      }
-      
-      if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
+      if (!apiKey || apiKey.length < 10) {
          return res.status(500).json({ 
            error: "IA_CONFIGURATION_ERROR", 
-           message: "Chave Gemini não configurada." 
+           message: "Chave Gemini não configurada no ambiente (GEMINI_API_KEY)." 
          });
       }
 
