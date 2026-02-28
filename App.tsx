@@ -81,9 +81,13 @@ const App: React.FC = () => {
     // Fallback inteligente para social_profiles: confia no banco se existir (mesmo vazio), senão usa metadata
     const dbSocial = profile?.social_profiles;
     const metaSocial = authUser.user_metadata?.social_profiles;
+    const localSocialStr = localStorage.getItem(`road_perf_${authUser.id}`);
+    let localSocial = [];
+    try { if (localSocialStr) localSocial = JSON.parse(localSocialStr); } catch(e) {}
+
     const safeSocialProfiles = (dbSocial !== undefined && dbSocial !== null) 
       ? dbSocial 
-      : (Array.isArray(metaSocial) ? metaSocial : []);
+      : (Array.isArray(metaSocial) && metaSocial.length > 0 ? metaSocial : (Array.isArray(localSocial) ? localSocial : []));
 
     return {
       id: authUser.id,

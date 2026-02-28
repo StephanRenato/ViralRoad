@@ -24,7 +24,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+    let apiKey = (process.env.GEMINI_API_KEY || '').trim();
+    
+    // Fallback para a chave fornecida pelo usuário se a do ambiente estiver incorreta
+    if (!apiKey || !apiKey.startsWith('AIza')) {
+      apiKey = 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8';
+    }
     
     if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
        console.error("SERVER ERROR: GEMINI_API_KEY is missing or invalid.");
@@ -54,6 +59,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   } catch (error: any) {
     console.error("IA Proxy Error:", error);
+    
+    // Handle specific Google GenAI errors
+    if (error.message?.includes("API key not valid") || error.message?.includes("API_KEY_INVALID")) {
+      return res.status(401).json({ 
+        error: "INVALID_API_KEY", 
+        message: "A chave da API Gemini (GEMINI_API_KEY) é inválida. Verifique se você copiou a chave corretamente do Google AI Studio e se ela não possui espaços extras." 
+      });
+    }
+
     return res.status(500).json({ error: error.message || "Internal Server Error" });
   }
 }

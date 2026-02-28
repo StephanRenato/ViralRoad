@@ -40,15 +40,13 @@ async function analisarPerfil({ platform, url }: { platform: string, url: string
       if (platformId === 'tiktok') return (await fetchTikTokProfileData(url)).raw;
       if (platformId === 'youtube') return (await fetchYouTubeProfileData(url)).raw;
       if (platformId === 'kwai') return (await fetchKwaiProfileData(url)).raw;
-      return getMockProfileData(platformId, { url });
+      
+      // Se não for uma das plataformas acima, retorna erro
+      throw new Error(`Plataforma ${platform} não suportada para análise real.`);
   } catch (error: any) {
       console.error("Erro na análise real:", error);
-      // Se for erro de configuração ou autenticação, repassa o erro para o usuário
-      if (error.message?.includes("CONFIGURATION") || error.message?.includes("AUTH") || error.message?.includes("401")) {
-          throw error;
-      }
-      // Outros erros (ex: perfil não encontrado) usam Mock para não quebrar a UX
-      return getMockProfileData(platformId, { url });
+      // Repassa o erro para que o handleConnect capture e exiba na UI
+      throw error;
   }
 }
 
@@ -103,7 +101,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     }
   };
 
-  const handleConnect = async (urlOverride?: string) => {
+  const handleConnect = async (urlOverride?: string, forceMock: boolean = false) => {
     const urlToUse = urlOverride || newUrl;
     if (!urlToUse) return;
     
@@ -118,13 +116,38 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     setAuditResult(null);
 
     addLog(`Iniciando Road Performance Engine v3.0...`);
-    setProgress(10);
+    setProgress(5);
 
     try {
+      // PRE-CHECK: Verificar Gemini antes de gastar créditos Apify
+      if (!forceMock) {
+        addLog("Validando motores de IA...");
+        const healthRes = await fetch('/api/gemini-health');
+        const healthData = await healthRes.json();
+        
+        if (healthData.status !== 'ok') {
+          const errorMsg = healthData.message || "Erro na validação da IA";
+          setUrlError(errorMsg);
+          addLog(`ERRO CRÍTICO: ${errorMsg}`);
+          setDiagnosticStatus({ gemini: healthData });
+          setAddingUrl(false);
+          setAnalyzingPlatform(null);
+          return; // Interrompe antes de chamar o Apify
+        }
+        addLog("IA Engine: OK");
+      }
+      
+      setProgress(15);
       const platformKey = activePlatform.toLowerCase();
       addLog(`Conectando ao gateway social: ${activePlatform}...`);
       
-      const rawResponse = await analisarPerfil({ platform: activePlatform, url: urlToUse });
+      let rawResponse;
+      if (forceMock) {
+        addLog("MODO DEMO: Gerando dados táticos simulados...");
+        rawResponse = getMockProfileData(platformKey, { url: urlToUse });
+      } else {
+        rawResponse = await analisarPerfil({ platform: activePlatform, url: urlToUse });
+      }
       setProgress(30);
       
       let postsData = [];
@@ -186,19 +209,41 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       const updated = [...localProfiles.filter(p => p.platform !== activePlatform), newProfile];
       setLocalProfiles(updated);
       
-      // 1. Tenta salvar no banco de dados
-      const { error: dbError } = await supabase.from('profiles').upsert({ 
-        id: user.id,
-        social_profiles: updated
-      }, { onConflict: 'id' });
-      
-      if (dbError) {
-        console.warn("Falha ao salvar performance no banco, usando metadata...", dbError);
-        // 2. Fallback para Metadata do Auth
-        const { error: authError } = await supabase.auth.updateUser({
-          data: { social_profiles: updated }
+      // 1. Tenta salvar via Proxy do Servidor (Mais resiliente contra erros de fetch no cliente)
+      try {
+        addLog("Sincronizando com a nuvem...");
+        const proxyDbRes = await fetch('/api/db/upsert-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: user.id, profiles: updated })
         });
-        if (authError) throw authError;
+        
+        if (!proxyDbRes.ok) {
+          throw new Error("Proxy de banco falhou");
+        }
+        addLog("Sincronização: OK");
+      } catch (proxyErr) {
+        console.warn("Falha no proxy de banco, tentando Supabase direto...", proxyErr);
+        
+        // Fallback: Tenta salvar no banco de dados direto (Cliente)
+        const { error: dbError } = await supabase.from('profiles').upsert({ 
+          id: user.id,
+          social_profiles: updated
+        }, { onConflict: 'id' });
+        
+        if (dbError) {
+          console.warn("Falha ao salvar performance no banco direto, usando metadata...", dbError);
+          // Fallback local imediato para persistência na sessão atual
+          localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(updated));
+          
+          // 2. Fallback para Metadata do Auth
+          const { error: authError } = await supabase.auth.updateUser({
+            data: { social_profiles: updated }
+          });
+          if (authError) {
+             console.error("Falha crítica ao salvar em metadata:", authError);
+          }
+        }
       }
       
       onRefreshUser();
@@ -209,14 +254,26 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       
       if (errorMsg.includes("APIFY_CONFIGURATION_ERROR")) {
         errorMsg = "⚠️ ERRO DE CONFIGURAÇÃO: O token do Apify não foi encontrado no servidor. Por favor, configure a variável APIFY_TOKEN.";
+      } else if (errorMsg.includes("APIFY_API_ERROR") || errorMsg.includes("match regular expression")) {
+        errorMsg = "❌ ERRO DE FORMATO: O link enviado não é válido para esta rede social. Certifique-se de que o link do Instagram comece com 'https://instagram.com/'.";
       } else if (errorMsg.includes("504") || errorMsg.includes("TIMEOUT")) {
         errorMsg = "⏳ TEMPO EXCEDIDO: A plataforma demorou muito para responder. Isso é comum em perfis grandes ou horários de pico. Tente novamente em instantes.";
-      } else if (errorMsg.includes("401")) {
-        errorMsg = "🚫 NÃO AUTORIZADO: Sua chave de API (Gemini ou Apify) parece ser inválida ou expirou.";
+      } else if (errorMsg.includes("INVALID_API_KEY_FORMAT")) {
+        errorMsg = `🚫 CHAVE INCORRETA: ${errorMsg.split(':').pop() || 'A chave cadastrada em GEMINI_API_KEY não parece ser do Google.'}`;
+      } else if (errorMsg.includes("401") || errorMsg.includes("INVALID_API_KEY")) {
+        errorMsg = "🚫 CHAVE INVÁLIDA: Sua chave de API Gemini foi rejeitada pelo Google. Verifique se ela foi copiada corretamente do Google AI Studio.";
       }
       
       setUrlError(errorMsg);
       addLog(`ERRO: ${errorMsg}`);
+      
+      // Oferece opção de usar dados demo se falhar
+      setDiagnosticStatus({
+        status: 'error',
+        message: errorMsg,
+        suggestion: "Deseja visualizar como o relatório ficaria com dados de demonstração?",
+        canUseMock: true
+      });
     } finally {
       setAddingUrl(false);
       setAnalyzingPlatform(null);
@@ -225,14 +282,30 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
   const runDiagnostic = async () => {
     try {
-      addLog("Iniciando diagnóstico de conexão...");
+      addLog("Iniciando diagnóstico de conexão Apify...");
       const res = await fetch('/api/apify-health');
       const data = await res.json();
-      setDiagnosticStatus(data);
-      if (data.status === 'ok') {
-        addLog(`✅ Conexão Apify OK: Usuário ${data.user}`);
+      
+      addLog("Iniciando diagnóstico de conexão Gemini (IA)...");
+      const resIA = await fetch('/api/gemini-health');
+      const dataIA = await resIA.json();
+
+      addLog("Testando Proxy de Banco de Dados...");
+      const resDB = await fetch('/api/db/upsert-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: 'diagnostic', profiles: [] })
+      });
+      const dataDB = await resDB.json();
+
+      setDiagnosticStatus({ apify: data, gemini: dataIA, dbProxy: dataDB });
+
+      if (data.status === 'ok' && dataIA.status === 'ok' && (dataDB.status === 'ok' || dataDB.status === 'success')) {
+        addLog(`✅ Tudo OK! Apify: ${data.user} | Gemini: Ativo | DB Proxy: OK`);
       } else {
-        addLog(`❌ Erro de Conexão: ${data.message}`);
+        if (data.status !== 'ok') addLog(`❌ Erro Apify: ${data.message}`);
+        if (dataIA.status !== 'ok') addLog(`❌ Erro Gemini: ${dataIA.message}`);
+        if (dataDB.status !== 'ok' && dataDB.status !== 'success') addLog(`❌ Erro DB Proxy: ${dataDB.message || 'Falha no proxy'}`);
       }
     } catch (e) {
       addLog("❌ Falha ao contatar servidor de diagnóstico.");
@@ -311,9 +384,18 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                       </div>
                     )}
                     {diagnosticStatus && (
-                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${diagnosticStatus.status === 'ok' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${(!diagnosticStatus.apify || diagnosticStatus.apify.status === 'ok') && (!diagnosticStatus.gemini || diagnosticStatus.gemini.status === 'ok') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                         <div className="font-black uppercase mb-1">Resultado do Diagnóstico:</div>
-                        <pre className="whitespace-pre-wrap">{JSON.stringify(diagnosticStatus, null, 2)}</pre>
+                        <pre className="whitespace-pre-wrap mb-3">{JSON.stringify(diagnosticStatus, null, 2)}</pre>
+                        
+                        {(diagnosticStatus.canUseMock || (diagnosticStatus.gemini && diagnosticStatus.gemini.status !== 'ok')) && (
+                          <button 
+                            onClick={() => handleConnect(newUrl, true)}
+                            className="w-full py-2 bg-zinc-800 text-white rounded-xl font-black uppercase tracking-widest hover:bg-zinc-700 transition-all mt-2"
+                          >
+                            Visualizar com Dados Demo
+                          </button>
+                        )}
                       </div>
                     )}
                     <button onClick={() => handleConnect()} disabled={!newUrl || addingUrl} className="w-full bg-yellow-400 text-black py-5 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] shadow-xl hover:scale-105 transition-all flex items-center justify-center gap-2">

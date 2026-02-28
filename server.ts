@@ -1,11 +1,16 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from '@supabase/supabase-js';
 import dotenv from "dotenv";
 
 dotenv.config();
 
 const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
+const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://pawcolinueutmyxxlrui.supabase.co';
+const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VZ_fuGTHNuFhI3ivO_W62g_Ggh7ngGQ';
+
+const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const ACTOR_IDS: Record<string, string> = {
   instagram: 'apify~instagram-scraper',
@@ -29,6 +34,12 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Log all requests for debugging
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} | ${req.method} ${req.url}`);
+    next();
+  });
 
   // Health check
   app.get("/api/health", (req, res) => {
@@ -72,21 +83,66 @@ async function startServer() {
     }
   });
 
+  // Gemini Health Check
+  app.get("/api/gemini-health", async (req, res) => {
+    try {
+      let apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      
+      // Fallback para a chave fornecida pelo usuário se a do ambiente estiver incorreta
+      if (!apiKey || !apiKey.startsWith('AIza')) {
+        console.log("Ambiente com chave inválida. Usando fallback fornecido pelo usuário.");
+        apiKey = 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8';
+      }
+
+      if (!apiKey || apiKey.length < 10) {
+        return res.status(500).json({ 
+          status: "error", 
+          code: "GEMINI_TOKEN_MISSING",
+          message: "A chave GEMINI_API_KEY está ausente ou é muito curta." 
+        });
+      }
+      
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "Responda apenas 'OK' se estiver funcionando."
+      });
+
+      if (response.text?.includes("OK")) {
+        return res.json({ 
+          status: "ok", 
+          message: "Conexão Gemini verificada",
+          key_preview: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
+        });
+      } else {
+        throw new Error("Resposta inesperada do modelo.");
+      }
+    } catch (error: any) {
+      return res.status(500).json({ 
+        status: "error", 
+        message: error.message,
+        details: error.details || "Verifique se a chave tem permissão para o modelo gemini-3-flash-preview."
+      });
+    }
+  });
+
   // IA Proxy Route
   app.post("/api/ia-proxy", async (req, res) => {
-    console.log("IA Proxy Request received");
+    console.log(`${new Date().toISOString()} | IA Proxy Request`);
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      let apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      
+      if (!apiKey || !apiKey.startsWith('AIza')) {
+        apiKey = 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8';
+      }
       
       if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-         console.error("CRITICAL: GEMINI_API_KEY is missing or invalid.");
          return res.status(500).json({ 
            error: "IA_CONFIGURATION_ERROR", 
-           message: "A chave da API Gemini não foi configurada corretamente no ambiente (GEMINI_API_KEY)." 
+           message: "Chave Gemini não configurada." 
          });
       }
 
-      console.log(`Using Gemini API Key: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);
       const ai = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
 
@@ -96,33 +152,44 @@ async function startServer() {
         config
       });
 
-      if (!response) throw new Error("O modelo não retornou uma resposta válida.");
-
       const rawText = cleanJson(response.text || '{}');
       let parsedData;
-      
       try {
           parsedData = JSON.parse(rawText);
       } catch (e) {
           parsedData = { text: response.text, raw: rawText };
       }
-
       return res.status(200).json(parsedData);
-
     } catch (error: any) {
       console.error("IA Proxy Error:", error);
-      
-      // Handle specific Google GenAI errors
-      if (error.message?.includes("API key not valid")) {
-        return res.status(401).json({ 
-          error: "INVALID_API_KEY", 
-          message: "A chave da API Gemini fornecida é inválida. Verifique suas configurações." 
-        });
-      }
+      return res.status(500).json({ error: "IA_PROXY_ERROR", message: error.message });
+    }
+  });
 
+  // DB Proxy Route (More resilient than client-side fetch)
+  app.post("/api/db/upsert-profile", async (req, res) => {
+    const { userId, profiles } = req.body;
+    console.log(`${new Date().toISOString()} | DB Upsert Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { data, error } = await supabaseAdmin
+        .from('profiles')
+        .upsert({ 
+          id: userId, 
+          social_profiles: profiles,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' })
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Proxy Error:", error);
       return res.status(500).json({ 
-        error: "IA_PROXY_ERROR", 
-        message: error.message || "Erro interno ao processar requisição de IA." 
+        error: "DB_PROXY_ERROR", 
+        message: error.message || "Erro ao salvar no banco via proxy." 
       });
     }
   });
@@ -232,7 +299,11 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`VIRAL ROAD Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("CRITICAL SERVER ERROR:", err);
+  process.exit(1);
+});

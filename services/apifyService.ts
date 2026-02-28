@@ -49,15 +49,36 @@ export const mapToAppMetrics = (normalized: any): NormalizedMetrics => {
     };
 };
 
+const normalizeUrl = (url: string, platform: string): string => {
+  let cleanUrl = url.trim();
+  if (!cleanUrl.startsWith('http')) {
+    cleanUrl = `https://${cleanUrl}`;
+  }
+
+  if (platform === 'instagram' && !cleanUrl.includes('instagram.com')) {
+    const handle = cleanUrl.split('/').pop()?.replace('@', '');
+    return `https://www.instagram.com/${handle}/`;
+  }
+
+  if (platform === 'tiktok' && !cleanUrl.includes('tiktok.com')) {
+    const handle = cleanUrl.split('/').pop()?.replace('@', '');
+    return `https://www.tiktok.com/@${handle}`;
+  }
+
+  return cleanUrl;
+};
+
 export async function fetchInstagramProfileData(url: string) {
-  const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { directUrls: [url], resultsLimit: 1, resultsType: 'details' });
+  const normalizedUrl = normalizeUrl(url, 'instagram');
+  const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { directUrls: [normalizedUrl], resultsLimit: 1, resultsType: 'details' });
   const normalized = normalizeProfile(items, "instagram");
   return { normalized: mapToAppMetrics(normalized), raw: items[0] };
 }
 
 export async function fetchInstagramPosts(url: string, limit: number = 20) {
+  const normalizedUrl = normalizeUrl(url, 'instagram');
   const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { 
-    directUrls: [url], 
+    directUrls: [normalizedUrl], 
     resultsType: 'posts', 
     resultsLimit: limit,
     addParentData: false
@@ -66,18 +87,15 @@ export async function fetchInstagramPosts(url: string, limit: number = 20) {
 }
 
 export async function fetchTikTokProfileData(url: string) {
-  // Robust username extraction
-  let username = url;
-  if (url.includes('tiktok.com/')) {
-    const match = url.match(/@([a-zA-Z0-9._-]+)/);
-    if (match) username = match[1];
-    else {
-      // Fallback for URLs without @
-      const parts = url.split('/');
-      username = parts[parts.length - 1].replace('@', '').split('?')[0];
-    }
+  const normalizedUrl = normalizeUrl(url, 'tiktok');
+  
+  // Robust username extraction from normalized URL
+  let username = '';
+  const match = normalizedUrl.match(/@([a-zA-Z0-9._-]+)/);
+  if (match) {
+    username = match[1];
   } else {
-    username = url.replace('@', '').trim();
+    username = normalizedUrl.split('/').pop()?.replace('@', '').split('?')[0] || '';
   }
 
   if (!username) throw new Error("Não foi possível extrair o usuário da URL do TikTok.");
