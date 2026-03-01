@@ -28,12 +28,12 @@ const cleanJson = (text: string): string => {
 };
 
 const getSafeApiKey = () => {
-  const key = (process.env.GEMINI_API_KEY || '').trim();
-  if (key && key.startsWith('AIza') && key.length > 20) {
+  const key = (process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
+  console.log(`Checking API Key: ${key ? 'Present (starts with ' + key.substring(0, 4) + ')' : 'MISSING'}`);
+  if (key) {
     return key;
   }
-  console.warn("GEMINI_API_KEY is missing or invalid in environment.");
-  // Removed leaked fallback key for security.
+  console.warn("API Key is missing in environment.");
   return null;
 };
 
@@ -112,7 +112,7 @@ async function startServer() {
       
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash", // Using a more stable model for health check
+        model: "gemini-3-flash-preview", // Using a more stable model for health check
         contents: "Responda apenas 'OK' se estiver funcionando."
       });
 
@@ -150,8 +150,8 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
 
-      // Default to gemini-1.5-flash if not specified or if gemini-3 fails
-      const modelToUse = model || "gemini-1.5-flash";
+      // Default to gemini-3-flash-preview if not specified
+      const modelToUse = model || "gemini-3-flash-preview";
 
       const response = await ai.models.generateContent({
         model: modelToUse,

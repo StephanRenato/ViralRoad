@@ -28,7 +28,7 @@ export async function generateNarratives(params: any) {
 
     Responda em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-1.5-flash", prompt, {
+  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -49,7 +49,7 @@ export async function generateHeadlines(params: any) {
 
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-1.5-flash", prompt, {
+  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -75,7 +75,7 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-1.5-flash", prompt, {
+  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -108,7 +108,7 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         O campo 'key_action_item' deve ser uma ação prática e curta em PT-BR.
     `;
 
-    return await callGeminiHybrid("gemini-1.5-flash", prompt, {
+    return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
