@@ -18,13 +18,30 @@ interface GeminiKeyGuardProps {
 const GeminiKeyGuard: React.FC<GeminiKeyGuardProps> = ({ children }) => {
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [checking, setChecking] = useState(true);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const checkKey = async () => {
     try {
+      setChecking(true);
+      setErrorMsg(null);
       // Primeiro, verifica se o servidor já tem uma chave válida
       const healthResponse = await fetch('/api/gemini-health');
-      if (healthResponse.ok) {
+      const data = await healthResponse.json();
+
+      if (healthResponse.ok && data.status === 'ok') {
         setHasKey(true);
+        return;
+      }
+
+      // Se o servidor retornou erro de chave inválida, forçamos a seleção
+      if (data.code === 'GEMINI_KEY_INVALID') {
+        setErrorMsg("A chave selecionada anteriormente é inválida ou expirou.");
+        setHasKey(false);
+        return;
+      }
+
+      if (data.code === 'GEMINI_KEY_MISSING') {
+        setHasKey(false);
         return;
       }
 
@@ -33,7 +50,6 @@ const GeminiKeyGuard: React.FC<GeminiKeyGuardProps> = ({ children }) => {
         const selected = await window.aistudio.hasSelectedApiKey();
         setHasKey(selected);
       } else {
-        // Se não estiver no ambiente do AI Studio e o health falhou, algo está errado
         setHasKey(false);
       }
     } catch (error) {
@@ -50,10 +66,19 @@ const GeminiKeyGuard: React.FC<GeminiKeyGuardProps> = ({ children }) => {
 
   const handleSelectKey = async () => {
     if (window.aistudio && typeof window.aistudio.openSelectKey === 'function') {
-      await window.aistudio.openSelectKey();
-      // Após abrir o diálogo, assumimos sucesso para prosseguir, 
-      // conforme as diretrizes para evitar race conditions.
-      setHasKey(true);
+      try {
+        await window.aistudio.openSelectKey();
+        // Conforme as diretrizes, assumimos sucesso após abrir o diálogo
+        // para evitar bloqueios por race conditions.
+        setHasKey(true);
+        
+        // No entanto, agendamos uma verificação silenciosa em breve
+        setTimeout(() => {
+          checkKey();
+        }, 2000);
+      } catch (e) {
+        console.error("Erro ao abrir seletor de chave:", e);
+      }
     }
   };
 
@@ -78,6 +103,11 @@ const GeminiKeyGuard: React.FC<GeminiKeyGuardProps> = ({ children }) => {
             <p className="text-zinc-400 text-sm">
               Para utilizar as funcionalidades de Inteligência Artificial do Viral Road, você precisa selecionar uma chave de API do Google Gemini.
             </p>
+            {errorMsg && (
+              <p className="text-red-400 text-xs font-medium bg-red-400/10 py-2 px-3 rounded-lg border border-red-400/20">
+                {errorMsg}
+              </p>
+            )}
           </div>
 
           <div className="bg-zinc-800/50 rounded-xl p-4 text-left border border-zinc-700/50 flex gap-3">
@@ -92,12 +122,21 @@ const GeminiKeyGuard: React.FC<GeminiKeyGuardProps> = ({ children }) => {
             </div>
           </div>
 
-          <button
-            onClick={handleSelectKey}
-            className="w-full py-4 px-6 bg-yellow-400 hover:bg-yellow-500 text-black font-bold rounded-xl transition-all transform active:scale-95 shadow-lg shadow-yellow-400/20"
-          >
-            Selecionar Chave de API
-          </button>
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleSelectKey}
+              className="w-full py-4 px-6 bg-yellow-400 hover:bg-yellow-500 text-black font-bold rounded-xl transition-all transform active:scale-95 shadow-lg shadow-yellow-400/20"
+            >
+              Selecionar Chave de API
+            </button>
+            
+            <button
+              onClick={checkKey}
+              className="w-full py-3 px-6 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium rounded-xl transition-all text-sm"
+            >
+              Já selecionei, verificar novamente
+            </button>
+          </div>
           
           <p className="text-[10px] text-zinc-500 uppercase tracking-widest">
             Viral Road | AI Engine

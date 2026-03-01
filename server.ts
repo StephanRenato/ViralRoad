@@ -28,12 +28,26 @@ const cleanJson = (text: string): string => {
 };
 
 const getSafeApiKey = () => {
-  const key = (process.env.GEMINI_API_KEY || process.env.API_KEY || '').trim();
-  console.log(`Checking API Key: ${key ? 'Present (starts with ' + key.substring(0, 4) + ')' : 'MISSING'}`);
-  if (key) {
+  // Prioritize API_KEY (from AI Studio dialog) over GEMINI_API_KEY (from .env)
+  let key = (process.env.API_KEY || process.env.GEMINI_API_KEY || '').trim();
+  
+  // Ignore common placeholder values
+  const placeholders = ['YOUR_API_KEY', 'INSERT_KEY_HERE', 'PASTE_YOUR_KEY', 'undefined', 'null'];
+  if (placeholders.includes(key)) {
+    console.warn(`Ignoring placeholder API key: ${key}`);
+    key = '';
+  }
+
+  console.log(`Checking API Key: ${key ? 'Present (length: ' + key.length + ', starts with ' + key.substring(0, 4) + ')' : 'MISSING'}`);
+  
+  if (key && key.length > 10) {
     return key;
   }
-  console.warn("API Key is missing in environment.");
+  
+  if (key && key.length <= 10) {
+    console.warn("API Key is too short to be valid.");
+  }
+  
   return null;
 };
 
@@ -106,31 +120,45 @@ async function startServer() {
         return res.status(500).json({ 
           status: "error", 
           code: "GEMINI_KEY_MISSING",
-          message: "A chave GEMINI_API_KEY não foi configurada no ambiente." 
+          message: "A chave GEMINI_API_KEY ou API_KEY não foi configurada no ambiente." 
         });
       }
       
       const ai = new GoogleGenAI({ apiKey });
+      // Use a very simple prompt to verify connectivity
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview", // Using a more stable model for health check
-        contents: "Responda apenas 'OK' se estiver funcionando."
+        model: "gemini-3-flash-preview",
+        contents: "Say OK",
       });
 
-      if (response.text?.includes("OK")) {
+      const text = response.text;
+      if (text) {
         return res.json({ 
           status: "ok", 
           message: "Conexão Gemini verificada",
           key_preview: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
         });
       } else {
-        throw new Error("Resposta inesperada do modelo.");
+        throw new Error("Resposta vazia do modelo.");
       }
     } catch (error: any) {
       console.error("Gemini Health Check Error:", error);
+      
+      let code = "GEMINI_API_ERROR";
+      let message = error.message;
+      
+      if (message?.includes("API key not valid")) {
+        code = "GEMINI_KEY_INVALID";
+        message = "A chave de API fornecida é inválida. Por favor, selecione uma nova chave válida no Google AI Studio.";
+      } else if (message?.includes("model not found") || message?.includes("404")) {
+        code = "GEMINI_MODEL_NOT_FOUND";
+      }
+
       return res.status(500).json({ 
         status: "error", 
-        message: error.message,
-        details: error.details || "Verifique se a chave tem permissão para o modelo."
+        code,
+        message,
+        details: error.details || error.message
       });
     }
   });
@@ -170,8 +198,18 @@ async function startServer() {
     } catch (error: any) {
       console.error("IA Proxy Error:", error);
       
+      const message = error.message || "";
+      
+      // Handle invalid key error
+      if (message.includes("API key not valid") || message.includes("INVALID_ARGUMENT")) {
+        return res.status(401).json({ 
+          error: "GEMINI_KEY_INVALID", 
+          message: "Sua chave de API é inválida ou expirou. Por favor, selecione uma nova chave no Google AI Studio." 
+        });
+      }
+
       // Handle leaked key error specifically
-      if (error.message?.includes("leaked") || error.message?.includes("403")) {
+      if (message.includes("leaked") || message.includes("403")) {
         return res.status(403).json({ 
           error: "GEMINI_KEY_LEAKED", 
           message: "Sua chave de API foi reportada como vazada ou é inválida. Por favor, gere uma nova chave no Google AI Studio e configure-a no ambiente." 
