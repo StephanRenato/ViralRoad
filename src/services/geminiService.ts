@@ -28,7 +28,7 @@ export async function generateNarratives(params: any) {
 
     Responda em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+  return await callGeminiHybrid("gemini-1.5-flash", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -49,7 +49,7 @@ export async function generateHeadlines(params: any) {
 
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+  return await callGeminiHybrid("gemini-1.5-flash", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -75,7 +75,7 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+  return await callGeminiHybrid("gemini-1.5-flash", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -103,12 +103,17 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         - Especialização: ${params.specialization || 'N/A'}
         - Objetivo: ${params.objective || 'Crescimento'}
 
-        Forneça uma análise estratégica completa em Português do Brasil (PT-BR).
-        Certifique-se de que todos os campos do schema sejam preenchidos com insights valiosos e táticos.
-        O campo 'key_action_item' deve ser uma ação prática e curta em PT-BR.
+        INSTRUÇÕES CRÍTICAS:
+        1. Responda TUDO em Português do Brasil (PT-BR).
+        2. O campo 'key_action_item' DEVE ser uma ação prática, curta e impactante em PT-BR (ex: "Aumente a interação nos stories com enquetes").
+        3. O campo 'tone_audit' DEVE descrever o tom de voz atual e sugerir melhorias.
+        4. O campo 'frequency_suggestion' DEVE ser uma recomendação clara (ex: "3x por semana nos Reels, 5x nos Stories").
+        5. O campo 'content_pillars' DEVE conter 3 a 4 temas principais para o nicho.
+        6. O campo 'content_strategy_advice' DEVE ser a Linha Editorial detalhada.
+        7. NÃO deixe nenhum campo vazio ou em inglês.
     `;
 
-    return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+    return await callGeminiHybrid("gemini-1.5-flash", prompt, {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {

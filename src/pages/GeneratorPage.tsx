@@ -185,20 +185,32 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
   };
 
   const handleGenerateNarratives = async () => {
-    if (!params.segment) return;
+    if (!params.segment) {
+      setSaveError("Por favor, descreva o que você quer criar antes de continuar.");
+      return;
+    }
+    
     if (isLimitReached) {
       setSaveError("Você atingiu seu limite de blueprints mensais. Faça upgrade para continuar gerando.");
       return;
     }
 
     setLoading(true);
+    setSaveError(null);
     setStep(2); 
+    
+    console.log("Iniciando geração de narrativas com params:", params);
+    
     try {
       const res = await generateNarratives({ ...params });
+      console.log("Narrativas geradas com sucesso:", res);
+      if (!res || !res.narratives || res.narratives.length === 0) {
+        throw new Error("A IA não retornou narrativas válidas. Tente mudar o tema.");
+      }
       setNarratives(res);
     } catch (e: any) {
-      console.error(e);
-      setSaveError(e.message || "Falha na Engine Road.");
+      console.error("Erro na geração de narrativas:", e);
+      setSaveError(e.message || "Falha na Engine Road. Tente novamente em instantes.");
       setStep(1);
     } finally {
       setLoading(false);
@@ -393,6 +405,13 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
         ) : step === 1 ? (
           <motion.div key="step1" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }} className="space-y-10">
             
+            {saveError && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-red-500/10 border border-red-500/20 p-6 rounded-[2rem] flex items-center gap-3">
+                <AlertTriangle className="text-red-500" size={20} />
+                <p className="text-[10px] font-black uppercase text-red-500 tracking-widest italic">{String(saveError)}</p>
+              </motion.div>
+            )}
+
             {isLimitReached && (
               <div className="bg-red-500/10 border border-red-500/20 p-6 rounded-[2rem] flex flex-col md:flex-row items-center justify-between gap-4 animate-in slide-in-from-top-4">
                 <div className="flex items-center gap-3">

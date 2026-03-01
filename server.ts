@@ -8,13 +8,16 @@ dotenv.config();
 
 const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://pawcolinueutmyxxlrui.supabase.co';
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VZ_fuGTHNuFhI3ivO_W62g_Ggh7ngGQ';
+const SERVICE_ROLE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+const ANON_KEY = (process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VZ_fuGTHNuFhI3ivO_W62g_Ggh7ngGQ').trim();
 
 if (!SERVICE_ROLE_KEY) {
-  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY is missing. Admin operations (auth.admin) will fail.");
+  console.error("❌ CRITICAL: SUPABASE_SERVICE_ROLE_KEY is missing. Administrative tasks (auth.admin) will fail.");
+} else {
+  console.log(`✅ SUPABASE_SERVICE_ROLE_KEY detected (Length: ${SERVICE_ROLE_KEY.length})`);
 }
 
+// Use SERVICE_ROLE_KEY for the server-side client to bypass RLS and perform admin tasks
 const SUPABASE_KEY = SERVICE_ROLE_KEY || ANON_KEY;
 
 const supabaseServer = createClient(SUPABASE_URL, SUPABASE_KEY, {
@@ -162,23 +165,37 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
 
-      // Default to gemini-1.5-flash if not specified or if gemini-3 fails
+      // Default to gemini-1.5-flash if not specified
       const modelToUse = model || "gemini-1.5-flash";
 
-      const response = await ai.models.generateContent({
-        model: modelToUse,
-        contents,
-        config
-      });
+      // Adicionado timeout de 45 segundos para a IA
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-      const rawText = cleanJson(response.text || '{}');
-      let parsedData;
       try {
-          parsedData = JSON.parse(rawText);
-      } catch (e) {
-          parsedData = { text: response.text, raw: rawText };
+        const response = await ai.models.generateContent({
+          model: modelToUse,
+          contents,
+          config
+        });
+
+        clearTimeout(timeoutId);
+
+        const rawText = cleanJson(response.text || '{}');
+        let parsedData;
+        try {
+            parsedData = JSON.parse(rawText);
+        } catch (e) {
+            parsedData = { text: response.text, raw: rawText };
+        }
+        return res.status(200).json(parsedData);
+      } catch (aiError: any) {
+        clearTimeout(timeoutId);
+        if (aiError.name === 'AbortError') {
+          return res.status(504).json({ error: "IA_TIMEOUT", message: "A inteligência artificial demorou muito para responder. Tente novamente." });
+        }
+        throw aiError;
       }
-      return res.status(200).json(parsedData);
     } catch (error: any) {
       console.error("IA Proxy Error:", error);
       
@@ -266,7 +283,10 @@ async function startServer() {
 
     try {
       if (!SERVICE_ROLE_KEY) {
-        throw new Error("Configuração incompleta: SUPABASE_SERVICE_ROLE_KEY não encontrada no servidor.");
+        return res.status(500).json({ 
+          error: "AUTH_CONFIG_ERROR", 
+          message: "Configuração incompleta: SUPABASE_SERVICE_ROLE_KEY não encontrada no servidor. Operações administrativas desabilitadas." 
+        });
       }
       const { data, error } = await supabaseServer.auth.admin.updateUserById(userId, {
         user_metadata: metadata
@@ -274,14 +294,18 @@ async function startServer() {
       
       if (error) {
         console.error("Supabase Auth Update Error:", error);
-        throw error;
+        return res.status(error.status || 500).json({ 
+          error: "SUPABASE_AUTH_ERROR", 
+          message: error.message,
+          details: error
+        });
       }
       return res.json({ status: "ok", data });
     } catch (error: any) {
-      console.error("Auth Proxy Error:", error);
+      console.error("Auth Proxy Exception:", error);
       return res.status(500).json({ 
-        error: "AUTH_PROXY_ERROR", 
-        message: error.message || "Erro ao atualizar metadados via proxy." 
+        error: "AUTH_PROXY_EXCEPTION", 
+        message: error.message || "Erro interno ao atualizar metadados via proxy." 
       });
     }
   });

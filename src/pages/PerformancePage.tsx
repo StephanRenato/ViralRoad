@@ -479,12 +479,16 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-purple-500 mb-2"><Megaphone size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Auditoria de Tom</h4></div>
-                   <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">"{analysis?.diagnostic?.tone_audit}"</p>
+                    <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                      {analysis?.diagnostic?.tone_audit ? `"${analysis.diagnostic.tone_audit}"` : "Auditoria pendente..."}
+                    </p>
                 </div>
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-blue-500 mb-2"><BrainCircuit size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Linha Editorial</h4></div>
-                   <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">"{analysis?.diagnostic?.content_strategy_advice}"</p>
+                    <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                      {analysis?.diagnostic?.content_strategy_advice ? `"${analysis.diagnostic.content_strategy_advice}"` : "Linha editorial pendente..."}
+                    </p>
                 </div>
              </div>
 
@@ -519,7 +523,14 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                             <span className="text-[8px] font-black uppercase text-zinc-400">
                               {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : 'N/A'}
                             </span>
-                            <a href={post.url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400"><ExternalLink size={12} /></a>
+                            <a 
+                              href={post.url || (post.shortCode ? `https://www.instagram.com/p/${post.shortCode}/` : '#')} 
+                              target="_blank" 
+                              rel="noopener noreferrer" 
+                              className="text-yellow-500 hover:text-yellow-400"
+                            >
+                              <ExternalLink size={12} />
+                            </a>
                           </div>
                         </div>
                       </div>
@@ -540,7 +551,15 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-6">
                    <div className="flex items-center gap-3"><div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Hash size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Pilares de Conteúdo</h4></div>
                    <div className="flex flex-wrap gap-2">
-                       {analysis?.content_pillars?.map((p, i) => <span key={i} className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest italic">{p}</span>)}
+                       {analysis?.content_pillars && analysis.content_pillars.length > 0 ? (
+                         analysis.content_pillars.map((p, i) => (
+                           <span key={i} className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest italic">
+                             {p}
+                           </span>
+                         ))
+                       ) : (
+                         <span className="text-[10px] font-bold italic text-zinc-500">Definindo pilares estratégicos...</span>
+                       )}
                    </div>
                 </div>
              </div>

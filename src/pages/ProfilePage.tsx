@@ -62,6 +62,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
   }, [user]);
 
   const handleSave = async () => {
+    if (!user?.id) {
+      alert("Usuário não autenticado.");
+      return;
+    }
     setSaving(true);
     setSuccessMsg('');
     try {
@@ -77,6 +81,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         }
       };
 
+      console.log("Salvando perfil com payload:", fullPayload);
+
       try {
         const response = await fetch('/api/db/upsert-profile', {
           method: 'POST',
@@ -90,11 +96,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         if (response.ok) {
           setSuccessMsg('Perfil Sincronizado!');
         } else {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Erro no proxy do servidor');
+          const errorData = await response.json().catch(() => ({ message: 'Erro desconhecido no servidor' }));
+          throw new Error(errorData.message || `Erro ${response.status} no proxy do servidor`);
         }
       } catch (proxyError: any) {
         console.warn("Proxy falhou, tentando salvamento direto no Supabase...", proxyError);
+        
+        // Se for erro de rede (Failed to fetch), avisa o usuário mas tenta o fallback
+        const isNetworkError = proxyError.message?.includes('fetch') || proxyError.name === 'TypeError';
         
         // 2. Fallback: Salvamento direto no Supabase (Caso o servidor esteja offline ou com erro)
         const { error: directError } = await supabase
@@ -122,24 +131,32 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
             });
 
             if (!authResponse.ok) {
-              const authErrorData = await authResponse.json();
+              const authErrorData = await authResponse.json().catch(() => ({ message: 'Erro de rede no proxy de auth' }));
               throw new Error(authErrorData.message || 'Erro no proxy de auth');
             }
             setSuccessMsg('Perfil Salvo (Modo de Segurança)');
           } catch (authProxyError: any) {
             console.error("Proxy de auth também falhou:", authProxyError);
-            // Tenta o último recurso real: Auth direto (provavelmente vai falhar se o resto falhou)
-            const { error: finalAuthError } = await supabase.auth.updateUser({
-              data: {
-                name: localProfile.name,
-                specialization: localProfile.specialization,
-                avatar_url: localProfile.avatarUrl,
-                social_profiles: localProfile.socialProfiles,
-                settings: fullPayload.settings
-              }
-            });
-            if (finalAuthError) throw finalAuthError;
-            setSuccessMsg('Perfil Salvo (Modo de Segurança)');
+            
+            // Tenta o último recurso real: Auth direto
+            try {
+              const { error: finalAuthError } = await supabase.auth.updateUser({
+                data: {
+                  name: localProfile.name,
+                  specialization: localProfile.specialization,
+                  avatar_url: localProfile.avatarUrl,
+                  social_profiles: localProfile.socialProfiles,
+                  settings: fullPayload.settings
+                }
+              });
+              if (finalAuthError) throw finalAuthError;
+              setSuccessMsg('Perfil Salvo (Modo de Segurança)');
+            } catch (finalError: any) {
+               if (isNetworkError) {
+                 throw new Error("Erro de conexão com o servidor. Verifique se o servidor está rodando.");
+               }
+               throw finalError;
+            }
           }
         } else {
           setSuccessMsg('Perfil Sincronizado!');
@@ -147,9 +164,9 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
       }
 
       // Pequeno delay para garantir que o Supabase processou a alteração antes do refresh
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 800));
       
-      if (onRefreshUser) onRefreshUser();
+      if (onRefreshUser) await onRefreshUser();
       setTimeout(() => setSuccessMsg(''), 3000);
     } catch (e: any) {
       console.error("Erro crítico ao salvar perfil:", e);

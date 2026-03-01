@@ -172,7 +172,13 @@ const App: React.FC = () => {
       const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), MAX_WAIT_TIME));
 
       // Tenta o proxy com timeout
-      const result: any = await Promise.race([fetchFromProxy(), timeoutPromise]);
+      let result: any;
+      try {
+        result = await Promise.race([fetchFromProxy(), timeoutPromise]);
+      } catch (proxyError) {
+        console.warn("⚡ Proxy falhou imediatamente. Tentando direto.");
+        result = 'TIMEOUT'; // Trata falha imediata do proxy como timeout para disparar o fallback
+      }
 
       if (result === 'TIMEOUT') {
         console.warn("⚡ Proxy lento. Tentando direto ou usando metadados.");
