@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { User, PlanType } from '../types';
+import { User, PlanType, Platform } from '../types';
 import { supabase } from '../services/supabase';
 import { 
   User as UserIcon, LogOut, Save, Loader2, 
   CheckCircle2, Bell, Zap, Camera, Instagram, Youtube, Music2, Trash2, Plus, Globe, Lock, ShieldCheck
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Platform } from '../types';
 
 interface ProfilePageProps {
   user: User;
@@ -66,25 +65,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     setSaving(true);
     setSuccessMsg('');
     try {
-      // Tenta obter a sessão atual de forma mais robusta
-      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error("Erro ao recuperar sessão:", sessionError);
-        throw new Error("Erro de autenticação. Tente sair e entrar novamente.");
-      }
-
-      if (!currentSession?.user) {
-        // Tenta um último recurso: getUser() que faz uma chamada de rede
-        const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
-        if (userError || !authUser) {
-          throw new Error("Sessão expirada. Por favor, faça login novamente.");
-        }
-      }
-
-      // 1. Tenta o salvamento completo no banco de dados
+      // 1. Tenta o salvamento via Proxy do Servidor (Mais resiliente a bloqueios de rede/CORS)
       const fullPayload = {
-        id: user.id,
         name: localProfile.name,
         specialization: localProfile.specialization,
         avatar_url: localProfile.avatarUrl,
@@ -95,57 +77,73 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         }
       };
 
-      const { error: fullError } = await supabase
-        .from('profiles')
-        .upsert(fullPayload, { onConflict: 'id' });
+      try {
+        const response = await fetch('/api/db/upsert-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            profileData: fullPayload
+          })
+        });
 
-      if (fullError) {
-        console.warn("Falha no salvamento completo, tentando modo de compatibilidade...", fullError);
-        
-        // 2. Se falhar por coluna ausente, tenta salvar apenas o básico
-        const basicPayload = {
-          id: user.id,
-          name: localProfile.name,
-          specialization: localProfile.specialization
-        };
-
-        const { error: basicError } = await supabase
-          .from('profiles')
-          .upsert(basicPayload, { onConflict: 'id' });
-
-        if (basicError) {
-          console.error("Falha no salvamento básico:", basicError);
-          // 3. Se tudo falhar no banco, salva no Metadata do Auth (Garante que não perca os dados)
-          const { data: { user: updatedAuthUser }, error: authError } = await supabase.auth.updateUser({
-            data: {
-              name: localProfile.name,
-              specialization: localProfile.specialization,
-              avatar_url: localProfile.avatarUrl,
-              social_profiles: localProfile.socialProfiles,
-              settings: {
-                notifications_ai_daily: localProfile.notificationsAiDaily,
-                notifications_engagement: localProfile.notificationsEngagement
-              }
-            }
-          });
-          
-          if (authError) throw authError;
-          setSuccessMsg('Perfil Salvo (Modo de Segurança)');
+        if (response.ok) {
+          setSuccessMsg('Perfil Sincronizado!');
         } else {
-          // Salvou o básico, agora tenta salvar o resto no metadata para não perder
-          await supabase.auth.updateUser({
-            data: {
-              social_profiles: localProfile.socialProfiles,
-              settings: {
-                notifications_ai_daily: localProfile.notificationsAiDaily,
-                notifications_engagement: localProfile.notificationsEngagement
-              }
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Erro no proxy do servidor');
+        }
+      } catch (proxyError: any) {
+        console.warn("Proxy falhou, tentando salvamento direto no Supabase...", proxyError);
+        
+        // 2. Fallback: Salvamento direto no Supabase (Caso o servidor esteja offline ou com erro)
+        const { error: directError } = await supabase
+          .from('profiles')
+          .upsert({ ...fullPayload, id: user.id }, { onConflict: 'id' });
+
+        if (directError) {
+          console.error("Falha no salvamento direto:", directError);
+          
+          // 3. Último recurso: Salva no Metadata do Auth via Proxy
+          try {
+            const authResponse = await fetch('/api/auth/update-metadata', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                userId: user.id,
+                metadata: {
+                  name: localProfile.name,
+                  specialization: localProfile.specialization,
+                  avatar_url: localProfile.avatarUrl,
+                  social_profiles: localProfile.socialProfiles,
+                  settings: fullPayload.settings
+                }
+              })
+            });
+
+            if (!authResponse.ok) {
+              const authErrorData = await authResponse.json();
+              throw new Error(authErrorData.message || 'Erro no proxy de auth');
             }
-          });
+            setSuccessMsg('Perfil Salvo (Modo de Segurança)');
+          } catch (authProxyError: any) {
+            console.error("Proxy de auth também falhou:", authProxyError);
+            // Tenta o último recurso real: Auth direto (provavelmente vai falhar se o resto falhou)
+            const { error: finalAuthError } = await supabase.auth.updateUser({
+              data: {
+                name: localProfile.name,
+                specialization: localProfile.specialization,
+                avatar_url: localProfile.avatarUrl,
+                social_profiles: localProfile.socialProfiles,
+                settings: fullPayload.settings
+              }
+            });
+            if (finalAuthError) throw finalAuthError;
+            setSuccessMsg('Perfil Salvo (Modo de Segurança)');
+          }
+        } else {
           setSuccessMsg('Perfil Sincronizado!');
         }
-      } else {
-        setSuccessMsg('Perfil Sincronizado!');
       }
 
       // Pequeno delay para garantir que o Supabase processou a alteração antes do refresh

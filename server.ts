@@ -8,9 +8,14 @@ dotenv.config();
 
 const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://pawcolinueutmyxxlrui.supabase.co';
-const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VZ_fuGTHNuFhI3ivO_W62g_Ggh7ngGQ';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VZ_fuGTHNuFhI3ivO_W62g_Ggh7ngGQ';
 
-const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseServer = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+});
 
 const ACTOR_IDS: Record<string, string> = {
   instagram: 'apify~instagram-scraper',
@@ -184,28 +189,62 @@ async function startServer() {
 
   // DB Proxy Route (More resilient than client-side fetch)
   app.post("/api/db/upsert-profile", async (req, res) => {
-    const { userId, profiles } = req.body;
+    const { userId, profileData } = req.body;
     console.log(`${new Date().toISOString()} | DB Upsert Request for ${userId}`);
     
     if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!profileData) return res.status(400).json({ error: "Missing profileData" });
 
     try {
-      const { data, error } = await supabaseAdmin
+      // Ensure the ID is set correctly in the payload
+      const payload = { 
+        ...profileData,
+        id: userId,
+        updated_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabaseServer
         .from('profiles')
-        .upsert({ 
-          id: userId, 
-          social_profiles: profiles,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'id' })
+        .upsert(payload, { onConflict: 'id' })
         .select();
       
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Upsert Error:", error);
+        throw error;
+      }
       return res.json({ status: "ok", data });
     } catch (error: any) {
       console.error("DB Proxy Error:", error);
       return res.status(500).json({ 
         error: "DB_PROXY_ERROR", 
         message: error.message || "Erro ao salvar no banco via proxy." 
+      });
+    }
+  });
+
+  // Auth Proxy Route (Fallback for metadata updates)
+  app.post("/api/auth/update-metadata", async (req, res) => {
+    const { userId, metadata } = req.body;
+    console.log(`${new Date().toISOString()} | Auth Metadata Update Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!metadata) return res.status(400).json({ error: "Missing metadata" });
+
+    try {
+      const { data, error } = await supabaseServer.auth.admin.updateUserById(userId, {
+        user_metadata: metadata
+      });
+      
+      if (error) {
+        console.error("Supabase Auth Update Error:", error);
+        throw error;
+      }
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("Auth Proxy Error:", error);
+      return res.status(500).json({ 
+        error: "AUTH_PROXY_ERROR", 
+        message: error.message || "Erro ao atualizar metadados via proxy." 
       });
     }
   });

@@ -1,5 +1,4 @@
 
-// @ts-nocheck
 import React, { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { User } from '../types';
