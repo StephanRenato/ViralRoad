@@ -78,7 +78,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
       };
 
       try {
-        const response = await fetch('/api/db/upsert-profile', {
+        const baseUrl = window.location.origin;
+        const response = await fetch(`${baseUrl}/api/db/upsert-profile`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -106,7 +107,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
           
           // 3. Último recurso: Salva no Metadata do Auth via Proxy
           try {
-            const authResponse = await fetch('/api/auth/update-metadata', {
+            const baseUrl = window.location.origin;
+            const authResponse = await fetch(`${baseUrl}/api/auth/update-metadata`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({

@@ -51,10 +51,30 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
   async function loadHooks(silent = false) {
     if (!silent) setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("hooks_library")
-        .select("*")
-        .order("created_at", { ascending: false });
+      let data: any[] = [];
+      let error: any = null;
+
+      // Tenta via Proxy primeiro (mais resiliente a bloqueios de rede no browser)
+      try {
+        const baseUrl = window.location.origin;
+        const response = await fetch(`${baseUrl}/api/db/hooks?userId=${user.id}`);
+        if (response.ok) {
+          const result = await response.json();
+          data = result.data || [];
+        } else {
+          throw new Error(`Proxy returned ${response.status}`);
+        }
+      } catch (proxyErr) {
+        console.warn("Falha ao carregar via proxy, tentando direto:", proxyErr);
+        // Fallback direto
+        const { data: directData, error: directError } = await supabase
+          .from("hooks_library")
+          .select("*")
+          .order("created_at", { ascending: false });
+        
+        data = directData || [];
+        error = directError;
+      }
 
       if (error) throw error;
       
@@ -165,7 +185,27 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
       });
 
       try {
-        const { error: insertError } = await supabase.from("hooks_library").insert(payload);
+        let insertError: any = null;
+
+        // Tenta via Proxy primeiro
+        try {
+          const baseUrl = window.location.origin;
+          const response = await fetch(`${baseUrl}/api/db/hooks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: auth.user.id, payload })
+          });
+          
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.message || `Proxy error ${response.status}`);
+          }
+        } catch (proxyErr: any) {
+          console.warn("Falha ao salvar via proxy, tentando direto:", proxyErr);
+          // Fallback direto
+          const { error: directError } = await supabase.from("hooks_library").insert(payload);
+          insertError = directError;
+        }
         
         if (insertError) {
           console.error("Erro Supabase:", insertError);
@@ -239,14 +279,32 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
             throw new Error("Usuário não autenticado.");
         }
 
-        const { error } = await supabase
-            .from("hooks_library")
-            .delete()
-            .eq("id", hookId)
-            .eq("user_id", auth.user.id);
+        let deleteError: any = null;
 
-        if (error) {
-            throw error;
+        // Tenta via Proxy primeiro
+        try {
+          const baseUrl = window.location.origin;
+          const response = await fetch(`${baseUrl}/api/db/hooks/${hookId}?userId=${auth.user.id}`, {
+            method: 'DELETE'
+          });
+          
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.message || `Proxy error ${response.status}`);
+          }
+        } catch (proxyErr: any) {
+          console.warn("Falha ao excluir via proxy, tentando direto:", proxyErr);
+          // Fallback direto
+          const { error: directError } = await supabase
+              .from("hooks_library")
+              .delete()
+              .eq("id", hookId)
+              .eq("user_id", auth.user.id);
+          deleteError = directError;
+        }
+
+        if (deleteError) {
+            throw deleteError;
         }
 
         // Sucesso: Remove o item da lista local

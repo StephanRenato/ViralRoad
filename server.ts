@@ -188,6 +188,33 @@ async function startServer() {
   });
 
   // DB Proxy Route (More resilient than client-side fetch)
+  app.get("/api/db/profile", async (req, res) => {
+    const { userId } = req.query;
+    console.log(`${new Date().toISOString()} | DB Get Profile Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { data, error } = await supabaseServer
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // PGRST116 is "not found"
+        console.error("Supabase Get Profile Error:", error);
+        throw error;
+      }
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Profile Proxy Error:", error);
+      return res.status(500).json({ 
+        error: "DB_GET_PROFILE_ERROR", 
+        message: error.message || "Erro ao carregar perfil via proxy." 
+      });
+    }
+  });
+
   app.post("/api/db/upsert-profile", async (req, res) => {
     const { userId, profileData } = req.body;
     console.log(`${new Date().toISOString()} | DB Upsert Request for ${userId}`);
@@ -246,6 +273,227 @@ async function startServer() {
         error: "AUTH_PROXY_ERROR", 
         message: error.message || "Erro ao atualizar metadados via proxy." 
       });
+    }
+  });
+
+  // Hooks Library Proxy Routes
+  app.get("/api/db/hooks", async (req, res) => {
+    const { userId } = req.query;
+    console.log(`${new Date().toISOString()} | DB Get Hooks Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { data, error } = await supabaseServer
+        .from('hooks_library')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Hooks Error:", error);
+      return res.status(500).json({ error: "DB_GET_HOOKS_ERROR", message: error.message });
+    }
+  });
+
+  app.post("/api/db/hooks", async (req, res) => {
+    const { userId, payload } = req.body;
+    console.log(`${new Date().toISOString()} | DB Insert Hooks Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!payload) return res.status(400).json({ error: "Missing payload" });
+
+    try {
+      // Ensure userId is set on all items if it's an array
+      const itemsToInsert = Array.isArray(payload) 
+        ? payload.map(item => ({ ...item, user_id: userId }))
+        : { ...payload, user_id: userId };
+
+      const { data, error } = await supabaseServer
+        .from('hooks_library')
+        .insert(itemsToInsert)
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Insert Hooks Error:", error);
+      return res.status(500).json({ error: "DB_INSERT_HOOKS_ERROR", message: error.message });
+    }
+  });
+
+  app.delete("/api/db/hooks/:id", async (req, res) => {
+    const { id } = req.params;
+    const { userId } = req.query;
+    console.log(`${new Date().toISOString()} | DB Delete Hook Request for ${id} (User: ${userId})`);
+    
+    if (!id) return res.status(400).json({ error: "Missing id" });
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { error } = await supabaseServer
+        .from('hooks_library')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      return res.json({ status: "ok" });
+    } catch (error: any) {
+      console.error("DB Delete Hook Error:", error);
+      return res.status(500).json({ error: "DB_DELETE_HOOK_ERROR", message: error.message });
+    }
+  });
+
+  // Content Blueprints Proxy Routes
+  app.get("/api/db/blueprints", async (req, res) => {
+    const { userId } = req.query;
+    console.log(`${new Date().toISOString()} | DB Get Blueprints Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { data, error } = await supabaseServer
+        .from('content_blueprints')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Blueprints Error:", error);
+      return res.status(500).json({ error: "DB_GET_BLUEPRINTS_ERROR", message: error.message });
+    }
+  });
+
+  app.post("/api/db/blueprints", async (req, res) => {
+    const { userId, payload } = req.body;
+    console.log(`${new Date().toISOString()} | DB Insert Blueprint Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!payload) return res.status(400).json({ error: "Missing payload" });
+
+    try {
+      const itemToInsert = { ...payload, user_id: userId };
+
+      const { data, error } = await supabaseServer
+        .from('content_blueprints')
+        .insert(itemToInsert)
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Insert Blueprint Error:", error);
+      return res.status(500).json({ error: "DB_INSERT_BLUEPRINT_ERROR", message: error.message });
+    }
+  });
+
+  app.patch("/api/db/blueprints/:id", async (req, res) => {
+    const { id } = req.params;
+    const { userId, payload } = req.body;
+    console.log(`${new Date().toISOString()} | DB Patch Blueprint Request for ${id}`);
+    
+    if (!id) return res.status(400).json({ error: "Missing id" });
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!payload) return res.status(400).json({ error: "Missing payload" });
+
+    try {
+      const { data, error } = await supabaseServer
+        .from('content_blueprints')
+        .update(payload)
+        .eq('id', id)
+        .eq('user_id', userId)
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Patch Blueprint Error:", error);
+      return res.status(500).json({ error: "DB_PATCH_BLUEPRINT_ERROR", message: error.message });
+    }
+  });
+
+  app.delete("/api/db/blueprints/:id", async (req, res) => {
+    const { id } = req.params;
+    const { userId } = req.query;
+    console.log(`${new Date().toISOString()} | DB Delete Blueprint Request for ${id}`);
+    
+    if (!id) return res.status(400).json({ error: "Missing id" });
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { error } = await supabaseServer
+        .from('content_blueprints')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', userId);
+      
+      if (error) throw error;
+      return res.json({ status: "ok" });
+    } catch (error: any) {
+      console.error("DB Delete Blueprint Error:", error);
+      return res.status(500).json({ error: "DB_DELETE_BLUEPRINT_ERROR", message: error.message });
+    }
+  });
+
+  // Usage Limits Proxy Routes
+  app.get("/api/db/usage", async (req, res) => {
+    const { userId } = req.query;
+    console.log(`${new Date().toISOString()} | DB Get Usage Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { data, error } = await supabaseServer
+        .from('usage_limits')
+        .select('*')
+        .eq('user_id', userId)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Usage Error:", error);
+      return res.status(500).json({ error: "DB_GET_USAGE_ERROR", message: error.message });
+    }
+  });
+
+  app.post("/api/db/usage/increment", async (req, res) => {
+    const { userId } = req.body;
+    console.log(`${new Date().toISOString()} | DB Increment Usage Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      // Get current usage
+      const { data: usageData, error: getError } = await supabaseServer
+        .from('usage_limits')
+        .select('used_this_month')
+        .eq('user_id', userId)
+        .single();
+      
+      if (getError && getError.code !== 'PGRST116') throw getError;
+      
+      const newUsedCount = (usageData?.used_this_month || 0) + 1;
+      
+      const { data, error } = await supabaseServer
+        .from('usage_limits')
+        .upsert({ 
+          user_id: userId, 
+          used_this_month: newUsedCount,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' })
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Increment Usage Error:", error);
+      return res.status(500).json({ error: "DB_INCREMENT_USAGE_ERROR", message: error.message });
     }
   });
 

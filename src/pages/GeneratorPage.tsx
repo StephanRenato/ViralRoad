@@ -249,44 +249,88 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) throw new Error("Sessão expirada. Faça login novamente.");
 
-      if (!isUnlimited) {
-        const { data: canGenerate } = await supabase.rpc("can_user_generate_blueprint", { p_user_id: authUser.id });
-        if (canGenerate === false) throw new Error("Limite atingido. Faça upgrade para continuar.");
+      const baseUrl = window.location.origin;
+
+      // 1. Tenta salvar via Proxy (mais resiliente)
+      try {
+        const payload = {
+          title: String(selectedHeadline || "Estratégia Viral Road"),
+          blueprint_type: 'road',
+          script: String(finalStrategy.script || ''),
+          caption: String(finalStrategy.caption || ''),
+          hashtags: String(finalStrategy.hashtags || ''),
+          niche: String(params.profileType),
+          sub_niche: String(params.specialization),
+          funnel_stage: String(params.funnel),
+          platform: String(params.platform),
+          format: String(params.format),
+          status: 'ideia'
+        };
+
+        const response = await fetch(`${baseUrl}/api/db/blueprints`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: authUser.id, payload })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.message || `Proxy error ${response.status}`);
+        }
+      } catch (proxyErr: any) {
+        console.warn("Falha ao salvar via proxy, tentando direto:", proxyErr);
+        
+        // Fallback direto
+        if (!isUnlimited) {
+          const { data: canGenerate } = await supabase.rpc("can_user_generate_blueprint", { p_user_id: authUser.id });
+          if (canGenerate === false) throw new Error("Limite atingido. Faça upgrade para continuar.");
+        }
+
+        const { error: insertError } = await supabase.from("content_blueprints").insert({
+          user_id: authUser.id,
+          title: String(selectedHeadline || "Estratégia Viral Road"),
+          blueprint_type: 'road',
+          script: String(finalStrategy.script || ''),
+          caption: String(finalStrategy.caption || ''),
+          hashtags: String(finalStrategy.hashtags || ''),
+          niche: String(params.profileType),
+          sub_niche: String(params.specialization),
+          funnel_stage: String(params.funnel),
+          platform: String(params.platform),
+          format: String(params.format),
+          status: 'ideia',
+          created_at: new Date().toISOString()
+        });
+
+        if (insertError) throw insertError;
       }
 
-      const { error: insertError } = await supabase.from("content_blueprints").insert({
-        user_id: authUser.id,
-        title: String(selectedHeadline || "Estratégia Viral Road"),
-        blueprint_type: 'road',
-        script: String(finalStrategy.script || ''),
-        caption: String(finalStrategy.caption || ''),
-        hashtags: String(finalStrategy.hashtags || ''),
-        niche: String(params.profileType),
-        sub_niche: String(params.specialization),
-        funnel_stage: String(params.funnel),
-        platform: String(params.platform),
-        format: String(params.format),
-        status: 'ideia',
-        created_at: new Date().toISOString()
-      });
-
-      if (insertError) throw insertError;
-
+      // 2. Incrementar uso via Proxy
       if (!isUnlimited) {
-        const { data: usageData } = await supabase
-          .from('usage_limits')
-          .select('used_this_month')
-          .eq('user_id', authUser.id)
-          .single();
-        
-        const newUsedCount = (usageData?.used_this_month || 0) + 1;
-        
-        await supabase
-          .from('usage_limits')
-          .upsert({ 
-            user_id: authUser.id, 
-            used_this_month: newUsedCount
-          }, { onConflict: 'id' });
+        try {
+          await fetch(`${baseUrl}/api/db/usage/increment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: authUser.id })
+          });
+        } catch (usageErr) {
+          console.warn("Falha ao incrementar uso via proxy, tentando direto:", usageErr);
+          
+          const { data: usageData } = await supabase
+            .from('usage_limits')
+            .select('used_this_month')
+            .eq('user_id', authUser.id)
+            .single();
+          
+          const newUsedCount = (usageData?.used_this_month || 0) + 1;
+          
+          await supabase
+            .from('usage_limits')
+            .upsert({ 
+              user_id: authUser.id, 
+              used_this_month: newUsedCount
+            }, { onConflict: 'id' });
+        }
       }
 
       if (onRefreshUser) await onRefreshUser();

@@ -4,7 +4,6 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, PlanType, SubscriptionStatus, ProfileType } from './types';
 import { supabase } from './services/supabase';
 import GlobalLoader from './components/GlobalLoader';
-import GeminiKeyGuard from './src/components/GeminiKeyGuard';
 
 // Lazy Loading - Rotas Públicas & Institucionais
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -139,37 +138,56 @@ const App: React.FC = () => {
     }
     
     // TIME-TO-INTERACTIVE OTIMIZADO:
-    const MAX_WAIT_TIME = 2500; 
+    const MAX_WAIT_TIME = 3500; 
 
     try {
-      const fetchPromise = Promise.allSettled([
-        supabase.from('profiles').select('*').eq('id', currentUser.id).single(),
-        supabase.from('usage_limits').select('*').eq('user_id', currentUser.id).single()
-      ]);
+      const baseUrl = window.location.origin;
+      
+      // Tenta via Proxy primeiro (mais resiliente)
+      const fetchFromProxy = async () => {
+        const [profileRes, usageRes] = await Promise.all([
+          fetch(`${baseUrl}/api/db/profile?userId=${currentUser.id}`),
+          fetch(`${baseUrl}/api/db/usage?userId=${currentUser.id}`)
+        ]);
+        
+        const profileData = profileRes.ok ? (await profileRes.json()).data : null;
+        const usageData = usageRes.ok ? (await usageRes.json()).data : null;
+        
+        return { profile: profileData, usage: usageData };
+      };
+
+      // Fallback direto se o proxy falhar catastróficamente
+      const fetchDirect = async () => {
+        const [pRes, uRes] = await Promise.allSettled([
+          supabase.from('profiles').select('*').eq('id', currentUser.id).single(),
+          supabase.from('usage_limits').select('*').eq('user_id', currentUser.id).single()
+        ]);
+        
+        const profile = pRes.status === 'fulfilled' ? pRes.value.data : null;
+        const usage = uRes.status === 'fulfilled' ? uRes.value.data : null;
+        
+        return { profile, usage };
+      };
 
       const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve('TIMEOUT'), MAX_WAIT_TIME));
 
-      const result: any = await Promise.race([fetchPromise, timeoutPromise]);
+      // Tenta o proxy com timeout
+      const result: any = await Promise.race([fetchFromProxy(), timeoutPromise]);
 
       if (result === 'TIMEOUT') {
-        console.warn("⚡ Banco lento. Usando metadados da sessão.");
+        console.warn("⚡ Proxy lento. Tentando direto ou usando metadados.");
         const fastUser = processUserData(currentUser, null, null);
         setUser(fastUser);
         setLoading(false);
         
-        fetchPromise.then((bgResults: any) => {
-          const profile = bgResults[0].status === 'fulfilled' ? bgResults[0].value.data : null;
-          const usage = bgResults[1].status === 'fulfilled' ? bgResults[1].value.data : null;
+        // Continua tentando em background
+        fetchDirect().then(({ profile, usage }) => {
           const fullUser = processUserData(currentUser, profile, usage);
           setUser(fullUser);
           localStorage.setItem(CACHE_KEY, JSON.stringify(fullUser));
         });
       } else {
-        const profileResult = result[0];
-        const usageResult = result[1];
-        const profile = profileResult.status === 'fulfilled' ? profileResult.value.data : null;
-        const usage = usageResult.status === 'fulfilled' ? usageResult.value.data : null;
-        
+        const { profile, usage } = result;
         const fullUser = processUserData(currentUser, profile, usage);
         setUser(fullUser);
         localStorage.setItem(CACHE_KEY, JSON.stringify(fullUser));
@@ -177,6 +195,7 @@ const App: React.FC = () => {
       }
       return true;
     } catch (e) {
+      console.error("Erro ao buscar dados do usuário:", e);
       setUser(processUserData(currentUser, null, null));
       setLoading(false);
       return false;
@@ -242,27 +261,25 @@ const App: React.FC = () => {
           
           <Route path="/dashboard/*" element={
             session && user ? (
-              <GeminiKeyGuard>
-                <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
-                  <Sidebar 
+              <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
+                <Sidebar 
+                  user={user} 
+                  theme={theme} 
+                  onToggleTheme={toggleTheme} 
+                  onLogout={handleLogout} 
+                  onUpgradeClick={() => setShowUpgradeModal(true)} 
+                />
+                <main className="flex-1 overflow-auto scroll-smooth-container relative">
+                   <Dashboard 
                     user={user} 
-                    theme={theme} 
-                    onToggleTheme={toggleTheme} 
                     onLogout={handleLogout} 
-                    onUpgradeClick={() => setShowUpgradeModal(true)} 
+                    showUpgrade={showUpgradeModal} 
+                    onCloseUpgrade={() => setShowUpgradeModal(false)} 
+                    onOpenUpgrade={() => setShowUpgradeModal(true)} 
+                    onRefreshUser={() => fetchUserData(session.user, true)}
                   />
-                  <main className="flex-1 overflow-auto scroll-smooth-container relative">
-                    <Dashboard 
-                      user={user} 
-                      onLogout={handleLogout} 
-                      showUpgrade={showUpgradeModal} 
-                      onCloseUpgrade={() => setShowUpgradeModal(false)} 
-                      onOpenUpgrade={() => setShowUpgradeModal(true)} 
-                      onRefreshUser={() => fetchUserData(session.user, true)}
-                    />
-                  </main>
-                </div>
-              </GeminiKeyGuard>
+                </main>
+              </div>
             ) : <Navigate to="/login" />
           } />
           
