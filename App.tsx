@@ -4,7 +4,6 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, PlanType, SubscriptionStatus, ProfileType } from './types';
 import { supabase } from './services/supabase';
 import GlobalLoader from './components/GlobalLoader';
-import GeminiKeyGuard from './src/components/GeminiKeyGuard';
 
 // Lazy Loading - Rotas Públicas & Institucionais
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -242,27 +241,25 @@ const App: React.FC = () => {
           
           <Route path="/dashboard/*" element={
             session && user ? (
-              <GeminiKeyGuard>
-                <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
-                  <Sidebar 
+              <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
+                <Sidebar 
+                  user={user} 
+                  theme={theme} 
+                  onToggleTheme={toggleTheme} 
+                  onLogout={handleLogout} 
+                  onUpgradeClick={() => setShowUpgradeModal(true)} 
+                />
+                <main className="flex-1 overflow-auto scroll-smooth-container relative">
+                   <Dashboard 
                     user={user} 
-                    theme={theme} 
-                    onToggleTheme={toggleTheme} 
                     onLogout={handleLogout} 
-                    onUpgradeClick={() => setShowUpgradeModal(true)} 
+                    showUpgrade={showUpgradeModal} 
+                    onCloseUpgrade={() => setShowUpgradeModal(false)} 
+                    onOpenUpgrade={() => setShowUpgradeModal(true)} 
+                    onRefreshUser={() => fetchUserData(session.user, true)}
                   />
-                  <main className="flex-1 overflow-auto scroll-smooth-container relative">
-                    <Dashboard 
-                      user={user} 
-                      onLogout={handleLogout} 
-                      showUpgrade={showUpgradeModal} 
-                      onCloseUpgrade={() => setShowUpgradeModal(false)} 
-                      onOpenUpgrade={() => setShowUpgradeModal(true)} 
-                      onRefreshUser={() => fetchUserData(session.user, true)}
-                    />
-                  </main>
-                </div>
-              </GeminiKeyGuard>
+                </main>
+              </div>
             ) : <Navigate to="/login" />
           } />
           
