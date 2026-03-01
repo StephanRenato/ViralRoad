@@ -252,14 +252,18 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       console.error("Erro capturado no handleConnect:", e);
       let errorMsg = e.message || "Erro na análise.";
       
-      if (errorMsg.includes("APIFY_CONFIGURATION_ERROR")) {
+      if (e.name === 'TypeError' && errorMsg.includes('fetch')) {
+        errorMsg = "📡 ERRO DE CONEXÃO: Não foi possível contatar o servidor. Verifique se sua internet está estável ou se o servidor está em manutenção.";
+      } else if (errorMsg.includes("APIFY_CONFIGURATION_ERROR")) {
         errorMsg = "⚠️ ERRO DE CONFIGURAÇÃO: O token do Apify não foi encontrado no servidor. Por favor, configure a variável APIFY_TOKEN.";
       } else if (errorMsg.includes("APIFY_API_ERROR") || errorMsg.includes("match regular expression")) {
         errorMsg = "❌ ERRO DE FORMATO: O link enviado não é válido para esta rede social. Certifique-se de que o link do Instagram comece com 'https://instagram.com/'.";
       } else if (errorMsg.includes("504") || errorMsg.includes("TIMEOUT")) {
         errorMsg = "⏳ TEMPO EXCEDIDO: A plataforma demorou muito para responder. Isso é comum em perfis grandes ou horários de pico. Tente novamente em instantes.";
-      } else if (errorMsg.includes("INVALID_API_KEY_FORMAT")) {
-        errorMsg = `🚫 CHAVE INCORRETA: ${errorMsg.split(':').pop() || 'A chave cadastrada em GEMINI_API_KEY não parece ser do Google.'}`;
+      } else if (errorMsg.includes("GEMINI_KEY_LEAKED") || errorMsg.includes("leaked")) {
+        errorMsg = "🚫 CHAVE VAZADA: Sua chave de API Gemini foi reportada como vazada pelo Google. Por favor, gere uma nova chave no Google AI Studio e atualize o ambiente.";
+      } else if (errorMsg.includes("GEMINI_KEY_MISSING")) {
+        errorMsg = "🚫 CHAVE AUSENTE: A variável GEMINI_API_KEY não está configurada no servidor.";
       } else if (errorMsg.includes("401") || errorMsg.includes("INVALID_API_KEY")) {
         errorMsg = "🚫 CHAVE INVÁLIDA: Sua chave de API Gemini foi rejeitada pelo Google. Verifique se ela foi copiada corretamente do Google AI Studio.";
       }
@@ -282,6 +286,16 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
   const runDiagnostic = async () => {
     try {
+      addLog("Aguardando inicialização do servidor...");
+      // Pequeno delay para garantir que o servidor subiu após restart
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      addLog("Testando conectividade básica (Ping)...");
+      const pingRes = await fetch('/api/ping');
+      const pingText = await pingRes.text();
+      const pingOk = pingText === 'pong';
+      addLog(pingOk ? "✅ Ping: OK" : "❌ Ping: Falhou");
+
       addLog("Iniciando diagnóstico de conexão Apify...");
       const res = await fetch('/api/apify-health');
       const data = await res.json();

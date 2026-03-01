@@ -66,8 +66,21 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     setSaving(true);
     setSuccessMsg('');
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) throw new Error("Sessão expirada");
+      // Tenta obter a sessão atual de forma mais robusta
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        console.error("Erro ao recuperar sessão:", sessionError);
+        throw new Error("Erro de autenticação. Tente sair e entrar novamente.");
+      }
+
+      if (!currentSession?.user) {
+        // Tenta um último recurso: getUser() que faz uma chamada de rede
+        const { data: { user: authUser }, error: userError } = await supabase.auth.getUser();
+        if (userError || !authUser) {
+          throw new Error("Sessão expirada. Por favor, faça login novamente.");
+        }
+      }
 
       // 1. Tenta o salvamento completo no banco de dados
       const fullPayload = {

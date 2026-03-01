@@ -27,6 +27,16 @@ const cleanJson = (text: string): string => {
   return text;
 };
 
+const getSafeApiKey = () => {
+  const key = (process.env.GEMINI_API_KEY || '').trim();
+  if (key && key.startsWith('AIza') && key.length > 20) {
+    return key;
+  }
+  console.warn("GEMINI_API_KEY is missing or invalid in environment.");
+  // Removed leaked fallback key for security.
+  return null;
+};
+
 console.log("VIRAL ROAD Server starting...");
 
 async function startServer() {
@@ -49,6 +59,11 @@ async function startServer() {
       timestamp: new Date().toISOString(),
       env: process.env.NODE_ENV
     });
+  });
+
+  // Ping for connectivity test
+  app.get("/api/ping", (req, res) => {
+    res.send("pong");
   });
 
   // Apify Health Check
@@ -86,20 +101,18 @@ async function startServer() {
   // Gemini Health Check
   app.get("/api/gemini-health", async (req, res) => {
     try {
-      // Fallback to the key provided by the user if env var is missing
-      let apiKey = (process.env.GEMINI_API_KEY || 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8').trim();
-      
-      if (!apiKey || apiKey.length < 10) {
+      const apiKey = getSafeApiKey();
+      if (!apiKey) {
         return res.status(500).json({ 
           status: "error", 
-          code: "GEMINI_TOKEN_MISSING",
-          message: "A chave GEMINI_API_KEY está ausente ou é inválida no ambiente." 
+          code: "GEMINI_KEY_MISSING",
+          message: "A chave GEMINI_API_KEY não foi configurada no ambiente." 
         });
       }
       
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash", // Using a more stable model for health check
         contents: "Responda apenas 'OK' se estiver funcionando."
       });
 
@@ -113,10 +126,11 @@ async function startServer() {
         throw new Error("Resposta inesperada do modelo.");
       }
     } catch (error: any) {
+      console.error("Gemini Health Check Error:", error);
       return res.status(500).json({ 
         status: "error", 
         message: error.message,
-        details: error.details || "Verifique se a chave tem permissão para o modelo gemini-3-flash-preview."
+        details: error.details || "Verifique se a chave tem permissão para o modelo."
       });
     }
   });
@@ -125,21 +139,22 @@ async function startServer() {
   app.post("/api/ia-proxy", async (req, res) => {
     console.log(`${new Date().toISOString()} | IA Proxy Request`);
     try {
-      // Fallback to the key provided by the user if env var is missing
-      const apiKey = (process.env.GEMINI_API_KEY || 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8').trim();
-      
-      if (!apiKey || apiKey.length < 10) {
-         return res.status(500).json({ 
-           error: "IA_CONFIGURATION_ERROR", 
-           message: "Chave Gemini não configurada no ambiente (GEMINI_API_KEY)." 
-         });
+      const apiKey = getSafeApiKey();
+      if (!apiKey) {
+        return res.status(500).json({ 
+          error: "GEMINI_KEY_MISSING", 
+          message: "A chave GEMINI_API_KEY não foi configurada no ambiente." 
+        });
       }
-
+      
       const ai = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
 
+      // Default to gemini-1.5-flash if not specified or if gemini-3 fails
+      const modelToUse = model || "gemini-1.5-flash";
+
       const response = await ai.models.generateContent({
-        model: model || "gemini-3-flash-preview",
+        model: modelToUse,
         contents,
         config
       });
@@ -154,6 +169,15 @@ async function startServer() {
       return res.status(200).json(parsedData);
     } catch (error: any) {
       console.error("IA Proxy Error:", error);
+      
+      // Handle leaked key error specifically
+      if (error.message?.includes("leaked") || error.message?.includes("403")) {
+        return res.status(403).json({ 
+          error: "GEMINI_KEY_LEAKED", 
+          message: "Sua chave de API foi reportada como vazada ou é inválida. Por favor, gere uma nova chave no Google AI Studio e configure-a no ambiente." 
+        });
+      }
+
       return res.status(500).json({ error: "IA_PROXY_ERROR", message: error.message });
     }
   });
@@ -290,8 +314,9 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`VIRAL ROAD Server running on http://0.0.0.0:${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`[${new Date().toISOString()}] VIRAL ROAD Server is fully operational on port ${PORT}`);
+    console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`[${new Date().toISOString()}] Supabase URL: ${SUPABASE_URL}`);
   });
 }
 
