@@ -212,8 +212,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       // 1. Tenta salvar via Proxy do Servidor (Mais resiliente contra erros de fetch no cliente)
       try {
         addLog("Sincronizando com a nuvem...");
-        const baseUrl = window.location.origin;
-        const proxyDbRes = await fetch(`${baseUrl}/api/db/upsert-profile`, {
+        const proxyDbRes = await fetch('/api/db/upsert-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: user.id, profileData: { social_profiles: updated } })
@@ -292,22 +291,21 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       addLog("Testando conectividade básica (Ping)...");
-      const baseUrl = window.location.origin;
-      const pingRes = await fetch(`${baseUrl}/api/ping`);
+      const pingRes = await fetch('/api/ping');
       const pingText = await pingRes.text();
       const pingOk = pingText === 'pong';
       addLog(pingOk ? "✅ Ping: OK" : "❌ Ping: Falhou");
 
       addLog("Iniciando diagnóstico de conexão Apify...");
-      const res = await fetch(`${baseUrl}/api/apify-health`);
+      const res = await fetch('/api/apify-health');
       const data = await res.json();
       
       addLog("Iniciando diagnóstico de conexão Gemini (IA)...");
-      const resIA = await fetch(`${baseUrl}/api/gemini-health`);
+      const resIA = await fetch('/api/gemini-health');
       const dataIA = await resIA.json();
 
       addLog("Testando Proxy de Banco de Dados...");
-      const resDB = await fetch(`${baseUrl}/api/db/upsert-profile`, {
+      const resDB = await fetch('/api/db/upsert-profile', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: 'diagnostic', profileData: { social_profiles: [] } })

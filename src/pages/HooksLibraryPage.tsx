@@ -56,8 +56,7 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
 
       // Tenta via Proxy primeiro (mais resiliente a bloqueios de rede no browser)
       try {
-        const baseUrl = window.location.origin;
-        const response = await fetch(`${baseUrl}/api/db/hooks?userId=${user.id}`);
+        const response = await fetch(`/api/db/hooks?userId=${user.id}`);
         if (response.ok) {
           const result = await response.json();
           data = result.data || [];
@@ -189,8 +188,7 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
 
         // Tenta via Proxy primeiro
         try {
-          const baseUrl = window.location.origin;
-          const response = await fetch(`${baseUrl}/api/db/hooks`, {
+          const response = await fetch('/api/db/hooks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: auth.user.id, payload })
@@ -283,8 +281,7 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
 
         // Tenta via Proxy primeiro
         try {
-          const baseUrl = window.location.origin;
-          const response = await fetch(`${baseUrl}/api/db/hooks/${hookId}?userId=${auth.user.id}`, {
+          const response = await fetch(`/api/db/hooks/${hookId}?userId=${auth.user.id}`, {
             method: 'DELETE'
           });
           

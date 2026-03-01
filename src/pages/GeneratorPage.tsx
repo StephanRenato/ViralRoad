@@ -249,8 +249,6 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) throw new Error("Sessão expirada. Faça login novamente.");
 
-      const baseUrl = window.location.origin;
-
       // 1. Tenta salvar via Proxy (mais resiliente)
       try {
         const payload = {
@@ -267,7 +265,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
           status: 'ideia'
         };
 
-        const response = await fetch(`${baseUrl}/api/db/blueprints`, {
+        const response = await fetch('/api/db/blueprints', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId: authUser.id, payload })
@@ -308,7 +306,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
       // 2. Incrementar uso via Proxy
       if (!isUnlimited) {
         try {
-          await fetch(`${baseUrl}/api/db/usage/increment`, {
+          await fetch('/api/db/usage/increment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId: authUser.id })

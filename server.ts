@@ -8,7 +8,14 @@ dotenv.config();
 
 const APIFY_TOKEN = (process.env.APIFY_TOKEN || '').trim();
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://pawcolinueutmyxxlrui.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VZ_fuGTHNuFhI3ivO_W62g_Ggh7ngGQ';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_VZ_fuGTHNuFhI3ivO_W62g_Ggh7ngGQ';
+
+if (!SERVICE_ROLE_KEY) {
+  console.warn("⚠️ SUPABASE_SERVICE_ROLE_KEY is missing. Admin operations (auth.admin) will fail.");
+}
+
+const SUPABASE_KEY = SERVICE_ROLE_KEY || ANON_KEY;
 
 const supabaseServer = createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: {
@@ -258,6 +265,9 @@ async function startServer() {
     if (!metadata) return res.status(400).json({ error: "Missing metadata" });
 
     try {
+      if (!SERVICE_ROLE_KEY) {
+        throw new Error("Configuração incompleta: SUPABASE_SERVICE_ROLE_KEY não encontrada no servidor.");
+      }
       const { data, error } = await supabaseServer.auth.admin.updateUserById(userId, {
         user_metadata: metadata
       });

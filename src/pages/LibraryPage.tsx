@@ -42,15 +42,13 @@ const LibraryPage: React.FC<{ user: User }> = ({ user }) => {
     try {
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      const baseUrl = window.location.origin;
-
       let data: any[] = [];
       let count = 0;
       let error: any = null;
 
       // Tenta via Proxy primeiro
       try {
-        const response = await fetch(`${baseUrl}/api/db/blueprints?userId=${user.id}`);
+        const response = await fetch(`/api/db/blueprints?userId=${user.id}`);
         if (response.ok) {
           const result = await response.json();
           data = result.data || [];
@@ -128,17 +126,7 @@ const LibraryPage: React.FC<{ user: User }> = ({ user }) => {
 
       // Tenta via Proxy primeiro
       try {
-        // Nota: Precisamos de uma rota de delete genérica ou específica. 
-        // Vou usar a de blueprints se eu a tivesse criado, mas criei apenas POST.
-        // Vou adicionar a rota DELETE no server.ts em seguida se necessário, 
-        // ou usar a lógica direta aqui como fallback.
-        
-        // Por enquanto, vamos tentar via fetch se eu tivesse a rota, 
-        // mas como não adicionei DELETE /api/db/blueprints/:id ainda, 
-        // vou focar no fallback direto ou adicionar a rota agora.
-        
-        // Adicionando a rota mentalmente e implementando o fetch:
-        const response = await fetch(`${baseUrl}/api/db/blueprints/${blueprintId}?userId=${user.id}`, {
+        const response = await fetch(`/api/db/blueprints/${blueprintId}?userId=${user.id}`, {
           method: 'DELETE'
         });
         

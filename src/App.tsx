@@ -146,8 +146,8 @@ const App: React.FC = () => {
       // Tenta via Proxy primeiro (mais resiliente)
       const fetchFromProxy = async () => {
         const [profileRes, usageRes] = await Promise.all([
-          fetch(`${baseUrl}/api/db/profile?userId=${currentUser.id}`),
-          fetch(`${baseUrl}/api/db/usage?userId=${currentUser.id}`)
+          fetch(`/api/db/profile?userId=${currentUser.id}`),
+          fetch(`/api/db/usage?userId=${currentUser.id}`)
         ]);
         
         const profileData = profileRes.ok ? (await profileRes.json()).data : null;
