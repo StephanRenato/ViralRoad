@@ -497,12 +497,16 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
                     {currentProfile.recent_posts.slice(0, 5).map((post: any, idx: number) => (
                       <div key={idx} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-lg group hover:border-yellow-400 transition-all">
-                        <div className="aspect-square relative overflow-hidden">
+                        <div className="aspect-square relative overflow-hidden bg-zinc-100 dark:bg-zinc-800">
                           <img 
                             src={post.displayUrl || post.thumbnailUrl || `https://picsum.photos/seed/${idx}/400/400`} 
                             alt="Post" 
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                             referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.src = `https://picsum.photos/seed/post-${idx}/400/400`;
+                              e.currentTarget.onerror = null;
+                            }}
                           />
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white">
                             <div className="flex items-center gap-1 font-black text-xs"><Heart size={14} fill="currentColor" /> {post.likesCount || 0}</div>
@@ -512,7 +516,9 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                         <div className="p-4 space-y-2">
                           <p className="text-[9px] font-bold text-zinc-500 line-clamp-2 italic">"{post.caption || 'Sem legenda'}"</p>
                           <div className="flex justify-between items-center pt-2 border-t dark:border-zinc-800">
-                            <span className="text-[8px] font-black uppercase text-zinc-400">{new Date(post.timestamp).toLocaleDateString()}</span>
+                            <span className="text-[8px] font-black uppercase text-zinc-400">
+                              {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : 'N/A'}
+                            </span>
                             <a href={post.url} target="_blank" rel="noopener noreferrer" className="text-yellow-500 hover:text-yellow-400"><ExternalLink size={12} /></a>
                           </div>
                         </div>
