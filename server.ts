@@ -86,7 +86,8 @@ async function startServer() {
   // Gemini Health Check
   app.get("/api/gemini-health", async (req, res) => {
     try {
-      let apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      // Fallback to the key provided by the user if env var is missing
+      let apiKey = (process.env.GEMINI_API_KEY || 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8').trim();
       
       if (!apiKey || apiKey.length < 10) {
         return res.status(500).json({ 
@@ -124,7 +125,8 @@ async function startServer() {
   app.post("/api/ia-proxy", async (req, res) => {
     console.log(`${new Date().toISOString()} | IA Proxy Request`);
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      // Fallback to the key provided by the user if env var is missing
+      const apiKey = (process.env.GEMINI_API_KEY || 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8').trim();
       
       if (!apiKey || apiKey.length < 10) {
          return res.status(500).json({ 
