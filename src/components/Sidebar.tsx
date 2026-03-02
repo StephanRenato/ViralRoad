@@ -14,11 +14,13 @@ import {
   ShieldCheck,
   BarChart3,
   KanbanSquare,
-  Coins
+  Coins,
+  Activity
 } from 'lucide-react';
 import { User, PlanType } from '../types';
 import { supabase } from '../services/supabase';
 import { motion } from 'framer-motion';
+import { useEffect } from 'react';
 
 interface SidebarProps {
   user: User;
@@ -56,7 +58,21 @@ const UserAvatar = ({ user, size = 'md' }: { user: User, size?: 'sm' | 'md' }) =
 
 const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout, onUpgradeClick }) => {
   const navigate = useNavigate();
+  const [iaStatus, setIaStatus] = useState<'checking' | 'ok' | 'error'>('checking');
   
+  useEffect(() => {
+    const checkIA = async () => {
+      try {
+        const res = await fetch('/api/gemini-health');
+        if (res.ok) setIaStatus('ok');
+        else setIaStatus('error');
+      } catch (e) {
+        setIaStatus('error');
+      }
+    };
+    checkIA();
+  }, []);
+
   const menuItems = [
     { name: 'GERADOR', path: '/dashboard', icon: Sparkles },
     { name: 'PERFORMANCE', path: '/dashboard/performance', icon: BarChart3 },
@@ -122,7 +138,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
           </div>
           
           <div className="mt-6 space-y-6">
-            <div>
+            <div className="flex flex-col gap-2">
               {isPro ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-yellow-400/10 text-yellow-500 rounded-lg text-[9px] font-black uppercase tracking-widest border border-yellow-400/20 shadow-sm">
                   <ShieldCheck size={10} fill="currentColor" /> PRO UNLIMITED
@@ -132,6 +148,19 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
                   PLATAFORMA: {user.currentPlan?.toUpperCase() || 'STARTER'}
                 </span>
               )}
+
+              <div className="flex items-center gap-2">
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-tighter border ${
+                  iaStatus === 'ok' 
+                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                  : iaStatus === 'error' 
+                  ? 'bg-red-500/10 text-red-500 border-red-500/20' 
+                  : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
+                }`}>
+                  <Activity size={8} className={iaStatus === 'checking' ? 'animate-pulse' : ''} />
+                  IA: {iaStatus === 'ok' ? 'CONECTADA' : iaStatus === 'error' ? 'OFFLINE' : 'VERIFICANDO...'}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-2.5">

@@ -24,12 +24,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    let apiKey = (process.env.GEMINI_API_KEY || '').trim();
-    
-    // Fallback para a chave fornecida pelo usuário se a do ambiente estiver incorreta
-    if (!apiKey || !apiKey.startsWith('AIza')) {
-      apiKey = 'AIzaSyBHyUoeLJlucU8AI5s2sRxfVgXQZD0_Fm8';
-    }
+    let apiKey = (process.env.GEMINI_API_KEY || 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw').trim();
     
     if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
        console.error("SERVER ERROR: GEMINI_API_KEY is missing or invalid.");
