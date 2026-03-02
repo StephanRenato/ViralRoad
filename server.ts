@@ -43,12 +43,21 @@ const cleanJson = (text: string): string => {
 };
 
 const getSafeApiKey = () => {
-  const key = (process.env.GEMINI_API_KEY || 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw').trim();
-  if (key && key.startsWith('AIza') && key.length > 20) {
-    return key;
+  const envKey = (process.env.GEMINI_API_KEY || '').trim();
+  // Fallback key provided by the user/platform
+  const fallbackKey = 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw';
+  
+  if (envKey && envKey.startsWith('AIza') && envKey.length > 20) {
+    return envKey;
   }
-  console.warn("GEMINI_API_KEY is missing or invalid in environment.");
-  return null;
+  
+  // If the env key is the error string itself, definitely use fallback
+  if (envKey === 'GEMINI_KEY_MISSING') {
+    return fallbackKey;
+  }
+
+  console.warn("GEMINI_API_KEY is missing or invalid in environment. Using fallback.");
+  return fallbackKey;
 };
 
 console.log("VIRAL ROAD Server starting...");
@@ -116,13 +125,6 @@ async function startServer() {
   app.get("/api/gemini-health", async (req, res) => {
     try {
       const apiKey = getSafeApiKey();
-      if (!apiKey) {
-        return res.status(500).json({ 
-          status: "error", 
-          code: "GEMINI_KEY_MISSING",
-          message: "A chave GEMINI_API_KEY não foi configurada no ambiente." 
-        });
-      }
       
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
@@ -154,12 +156,7 @@ async function startServer() {
     console.log(`${new Date().toISOString()} | IA Proxy Request`);
     try {
       const apiKey = getSafeApiKey();
-      if (!apiKey) {
-        return res.status(500).json({ 
-          error: "GEMINI_KEY_MISSING", 
-          message: "A chave GEMINI_API_KEY não foi configurada no ambiente." 
-        });
-      }
+      // getSafeApiKey now always returns a key (env or fallback)
       
       const ai = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
@@ -259,7 +256,7 @@ async function startServer() {
         .select();
       
       if (error) {
-        console.error("Supabase Upsert Error:", error);
+        console.error("Supabase Upsert Error Detail:", JSON.stringify(error, null, 2));
         throw error;
       }
       return res.json({ status: "ok", data });

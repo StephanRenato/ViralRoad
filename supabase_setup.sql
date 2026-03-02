@@ -64,5 +64,6 @@ ALTER TABLE public.usage_limits ENABLE ROW LEVEL SECURITY;
 -- Políticas Simples: Apenas o dono acessa seus dados
 CREATE POLICY "Users can view own profile" ON public.profiles FOR SELECT USING (auth.uid() = id);
 CREATE POLICY "Users can update own profile" ON public.profiles FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "Users can insert own profile" ON public.profiles FOR INSERT WITH CHECK (auth.uid() = id);
 CREATE POLICY "Users can manage own blueprints" ON public.content_blueprints FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "Users can manage own hooks" ON public.hooks_library FOR ALL USING (auth.uid() = user_id);

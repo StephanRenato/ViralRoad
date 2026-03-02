@@ -23,11 +23,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    let apiKey = (process.env.GEMINI_API_KEY || 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw').trim();
+    let apiKey = (process.env.GEMINI_API_KEY || '').trim();
+    const fallbackKey = 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw';
     
-    if (!apiKey || apiKey === 'undefined' || apiKey.length < 10) {
-       console.error("CRITICAL: GEMINI_API_KEY is missing or invalid in server environment");
-       return res.status(500).json({ error: "IA_CONFIGURATION_ERROR", message: "Chave API Gemini inválida ou ausente no servidor (GEMINI_API_KEY)." });
+    if (!apiKey || apiKey === 'undefined' || apiKey === 'GEMINI_KEY_MISSING' || apiKey.length < 10) {
+       apiKey = fallbackKey;
     }
 
     console.log(`Using Gemini API Key: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);
