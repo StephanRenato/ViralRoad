@@ -128,7 +128,7 @@ async function startServer() {
       
       const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash", // Using a more stable model for health check
+        model: "gemini-3-flash-preview", // Using a more stable model for health check
         contents: "Responda apenas 'OK' se estiver funcionando."
       });
 
@@ -161,8 +161,8 @@ async function startServer() {
       const ai = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
 
-      // Default to gemini-1.5-flash if not specified
-      const modelToUse = model || "gemini-1.5-flash";
+      // Default to gemini-3-flash-preview if not specified
+      const modelToUse = model || "gemini-3-flash-preview";
 
       // Adicionado timeout de 45 segundos para a IA
       const controller = new AbortController();
