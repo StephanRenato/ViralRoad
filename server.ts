@@ -122,6 +122,27 @@ async function startServer() {
     }
   });
 
+  // DB Schema Check (Debug)
+  app.get("/api/db/schema-check", async (req, res) => {
+    try {
+      const { data, error } = await supabaseServer.rpc('get_table_columns', { table_name: 'profiles' });
+      
+      // If RPC is not available, try a simple select
+      if (error) {
+        const { data: sample, error: selectError } = await supabaseServer.from('profiles').select('*').limit(1);
+        return res.json({ 
+          status: "fallback", 
+          columns: sample ? Object.keys(sample[0] || {}) : [],
+          error: selectError 
+        });
+      }
+      
+      return res.json({ status: "ok", columns: data });
+    } catch (error: any) {
+      return res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/db/upsert-profile", async (req, res) => {
     const { userId, profileData } = req.body;
     console.log(`${new Date().toISOString()} | DB Upsert Request for ${userId}`);
@@ -137,41 +158,50 @@ async function startServer() {
         updated_at: new Date().toISOString()
       };
 
-      let { data, error } = await supabaseServer
-        .from('profiles')
-        .upsert(payload, { onConflict: 'id' })
-        .select();
-      
-      // If column not found error (PGRST204), try to identify and remove the problematic column
-      if (error && error.code === 'PGRST204') {
-        console.warn(`Column error detected: ${error.message}. Attempting recovery...`);
-        
-        const missingColumnMatch = error.message.match(/column '([^']+)'/);
-        const missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
+      // Recursive recovery for missing columns (PGRST204)
+      const performUpsertWithRecovery = async (currentPayload: any, attempt = 1): Promise<{ data: any, error: any, removedColumns: string[] }> => {
+        const removedColumns: string[] = [];
+        const { data, error } = await supabaseServer
+          .from('profiles')
+          .upsert(currentPayload, { onConflict: 'id' })
+          .select();
 
-        if (missingColumn && payload[missingColumn] !== undefined) {
-          console.log(`Removing problematic column '${missingColumn}' and retrying...`);
-          delete payload[missingColumn];
+        if (error && error.code === 'PGRST204' && attempt < 5) {
+          console.warn(`[Attempt ${attempt}] Column error: ${error.message}`);
           
-          const retry = await supabaseServer
-            .from('profiles')
-            .upsert(payload, { onConflict: 'id' })
-            .select();
-          
-          data = retry.data;
-          error = retry.error;
+          const missingColumnMatch = error.message.match(/column '([^']+)'/) || error.message.match(/'([^']+)' column/);
+          const missingColumn = missingColumnMatch ? missingColumnMatch[1] : (error.message.includes("'settings' column") ? 'settings' : null);
+
+          if (missingColumn && currentPayload[missingColumn] !== undefined) {
+            console.log(`Removing problematic column '${missingColumn}' and retrying upsert...`);
+            const nextPayload = { ...currentPayload };
+            delete nextPayload[missingColumn];
+            const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+            return {
+              ...result,
+              removedColumns: [missingColumn, ...result.removedColumns]
+            };
+          }
         }
-      }
+        return { data, error, removedColumns };
+      };
+
+      const { data, error, removedColumns } = await performUpsertWithRecovery(payload);
       
       if (error) {
-        console.error("Supabase Upsert Error Detail:", error);
+        console.error("Final Supabase Upsert Error:", error);
         return res.status(400).json({ 
           error: "SUPABASE_UPSERT_ERROR", 
           message: error.message,
           details: error 
         });
       }
-      return res.json({ status: "ok", data });
+      return res.json({ 
+        status: "ok", 
+        data, 
+        recovered: removedColumns.length > 0,
+        removedColumns 
+      });
     } catch (error: any) {
       console.error("DB Proxy Exception:", error);
       return res.status(500).json({ 

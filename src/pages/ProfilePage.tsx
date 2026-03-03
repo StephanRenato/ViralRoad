@@ -109,7 +109,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     };
 
     try {
-      // 1. Tenta o salvamento via Proxy do Servidor
+      // 1. Tenta o salvamento via Proxy do Servidor (Recomendado)
+      console.log("Tentando salvamento via Proxy DB...");
       try {
         const response = await fetchWithRetry('/api/db/upsert-profile', {
           method: 'POST',
@@ -121,32 +122,45 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
         });
 
         if (response && response.ok) {
+          const resData = await response.json();
           dbSaved = true;
-          console.log("✅ Salvo via Proxy DB");
+          console.log("✅ Salvo via Proxy DB:", resData);
         } else {
-          const errorData = await response?.json().catch(() => ({ message: 'Erro no proxy' }));
+          const errorData = await response?.json().catch(() => ({ message: 'Erro desconhecido no proxy' }));
           console.warn("⚠️ Proxy DB falhou:", errorData);
+          
+          // Se o erro for de coluna faltando, o servidor já tentou recuperar, 
+          // mas se ainda falhou, avisamos no log
+          if (errorData.error === 'SUPABASE_UPSERT_ERROR') {
+             console.warn("Erro de schema no Supabase detectado via Proxy.");
+          }
         }
       } catch (proxyError) {
-        console.warn("⚠️ Erro de rede persistente no Proxy DB:", proxyError);
+        console.warn("⚠️ Erro de rede ou timeout no Proxy DB:", proxyError);
       }
 
-      // 2. Se o proxy falhou, tenta salvamento direto no Supabase (Fallback)
+      // 2. Se o proxy falhou, tenta salvamento direto no Supabase (Fallback de Cliente)
       if (!dbSaved) {
-        const { error: directError } = await supabase
-          .from('profiles')
-          .upsert({ ...fullPayload, id: user.id }, { onConflict: 'id' });
+        console.log("Tentando salvamento direto no Supabase...");
+        try {
+          const { error: directError } = await supabase
+            .from('profiles')
+            .upsert({ ...fullPayload, id: user.id }, { onConflict: 'id' });
 
-        if (!directError) {
-          dbSaved = true;
-          console.log("✅ Salvo via Supabase Direto");
-        } else {
-          console.warn("⚠️ Supabase Direto falhou:", directError);
+          if (!directError) {
+            dbSaved = true;
+            console.log("✅ Salvo via Supabase Direto");
+          } else {
+            console.warn("⚠️ Supabase Direto falhou:", directError);
+          }
+        } catch (directExc) {
+          console.warn("⚠️ Exceção no Supabase Direto (provavelmente bloqueio de iframe):", directExc);
         }
       }
 
-      // 3. INDEPENDENTE do DB, tenta salvar no Metadata do Auth (Redundância Crítica)
-      // Isso garante que o Road Performance funcione mesmo se a tabela 'profiles' estiver quebrada
+      // 3. INDEPENDENTE do DB, tenta salvar no Metadata do Auth (Redundância de Segurança)
+      // Isso garante que o sistema funcione mesmo se a tabela 'profiles' estiver inacessível
+      console.log("Iniciando backup em Metadata...");
       try {
         const authResponse = await fetchWithRetry('/api/auth/update-metadata', {
           method: 'POST',
@@ -158,51 +172,57 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
               specialization: localProfile.specialization,
               avatar_url: localProfile.avatarUrl,
               social_profiles: localProfile.socialProfiles,
-              settings: fullPayload.settings
+              settings: fullPayload.settings,
+              profile_type: user.profileType // Mantém o tipo de perfil
             }
           })
         });
 
         if (authResponse && authResponse.ok) {
           authSaved = true;
-          console.log("✅ Salvo via Proxy Auth Metadata");
+          console.log("✅ Backup via Proxy Auth Metadata: OK");
         } else {
-          // Fallback para Auth direto se o proxy de admin falhar
+          console.warn("Proxy Auth Metadata falhou, tentando Auth direto...");
           const { error: directAuthError } = await supabase.auth.updateUser({
             data: {
               name: localProfile.name,
               specialization: localProfile.specialization,
               avatar_url: localProfile.avatarUrl,
               social_profiles: localProfile.socialProfiles,
-              settings: fullPayload.settings
+              settings: fullPayload.settings,
+              profile_type: user.profileType
             }
           });
           if (!directAuthError) {
             authSaved = true;
-            console.log("✅ Salvo via Supabase Auth Direto");
+            console.log("✅ Backup via Supabase Auth Direto: OK");
+          } else {
+            console.warn("⚠️ Backup em Metadata falhou totalmente:", directAuthError);
           }
         }
       } catch (authError) {
-        console.warn("⚠️ Falha ao salvar em Metadata:", authError);
+        console.warn("⚠️ Erro crítico no processo de backup em Metadata:", authError);
       }
 
       if (dbSaved || authSaved) {
-        setSuccessMsg(dbSaved ? 'Perfil Sincronizado!' : 'Perfil Salvo (Modo de Segurança)');
+        setSuccessMsg(dbSaved ? 'Perfil Sincronizado com Sucesso!' : 'Perfil Salvo em Modo de Segurança');
         
-        // Salva localmente para garantir persistência imediata
+        // Atualiza LocalStorage para garantir que outras abas/páginas vejam a mudança imediatamente
         localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(localProfile.socialProfiles));
         
-        // Pequeno delay para garantir que o Supabase processou a alteração antes do refresh
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Força atualização do estado global do usuário
+        if (onRefreshUser) {
+           console.log("Solicitando atualização global do usuário...");
+           await onRefreshUser();
+        }
         
-        if (onRefreshUser) await onRefreshUser();
-        setTimeout(() => setSuccessMsg(''), 3000);
+        setTimeout(() => setSuccessMsg(''), 4000);
       } else {
-        throw new Error("Não foi possível salvar em nenhum dos sistemas de armazenamento.");
+        throw new Error("Não foi possível persistir os dados em nenhuma camada (DB ou Auth). Verifique sua conexão.");
       }
     } catch (e: any) {
-      console.error("Erro crítico ao salvar perfil:", e);
-      alert(`Erro ao salvar: ${e.message || 'Verifique sua conexão'}`);
+      console.error("FALHA CATASTRÓFICA NO SALVAMENTO:", e);
+      alert(`Erro ao salvar perfil: ${e.message || 'Erro de conexão persistente'}`);
     } finally {
       setSaving(false);
     }
