@@ -518,11 +518,18 @@ async function startServer() {
       }
 
       // Standard text generation
-      const prompt = typeof contents === 'string' ? contents : JSON.stringify(contents);
+      let prompt = typeof contents === 'string' ? contents : JSON.stringify(contents);
+      
+      // OpenAI requirement: prompt must contain 'json' if response_format is 'json_object'
+      const isJsonRequested = config?.responseMimeType === "application/json";
+      if (isJsonRequested && !prompt.toLowerCase().includes("json")) {
+        prompt += "\n\nResponda obrigatoriamente em formato JSON.";
+      }
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [{ role: "user", content: prompt }],
-        response_format: config?.responseMimeType === "application/json" ? { type: "json_object" } : undefined
+        response_format: isJsonRequested ? { type: "json_object" } : undefined
       });
 
       const rawText = completion.choices[0].message.content || '{}';
@@ -593,7 +600,7 @@ async function startServer() {
         - Taxa de Engajamento Calculada: ${realMetrics.engagement_rate}%
       ` : "DADOS: Perfil ainda não analisado ou privado.";
 
-      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}. Retorne um JSON com o campo "results" contendo um array de objetos com "profile_id" e "analysis" (viral_score, best_format, frequency_suggestion, content_pillars, diagnostic, next_post_recommendation).`;
+      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}. Responda obrigatoriamente em formato JSON com o campo "results" contendo um array de objetos com "profile_id" e "analysis" (viral_score, best_format, frequency_suggestion, content_pillars, diagnostic, next_post_recommendation).`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
