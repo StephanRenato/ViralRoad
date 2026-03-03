@@ -48,11 +48,14 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
+  app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // Log all requests for debugging
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} | ${req.method} ${req.url}`);
+    if (req.url !== '/api/health' && req.url !== '/api/ping') {
+      console.log(`${new Date().toISOString()} | ${req.method} ${req.url}`);
+    }
     next();
   });
 
@@ -82,8 +85,9 @@ async function startServer() {
         details: error || null,
         config: {
           url: SUPABASE_URL.substring(0, 15) + '...',
-          hasServiceKey: !!SERVICE_ROLE_KEY,
-          hasAnonKey: !!ANON_KEY
+          hasServiceKey: !!SERVICE_ROLE_KEY && SERVICE_ROLE_KEY.length > 20,
+          hasAnonKey: !!ANON_KEY && ANON_KEY.length > 20,
+          isServiceKeyValid: SERVICE_ROLE_KEY !== ANON_KEY
         }
       });
     } catch (error: any) {
@@ -92,6 +96,18 @@ async function startServer() {
         message: error.message || 'Falha catastrófica ao contatar Supabase' 
       });
     }
+  });
+
+  // Debug Environment (Masked)
+  app.get("/api/debug-env", (req, res) => {
+    res.json({
+      SUPABASE_URL: SUPABASE_URL ? "SET" : "MISSING",
+      SERVICE_ROLE_KEY: SERVICE_ROLE_KEY ? `SET (Length: ${SERVICE_ROLE_KEY.length})` : "MISSING",
+      ANON_KEY: ANON_KEY ? `SET (Length: ${ANON_KEY.length})` : "MISSING",
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? "SET" : "MISSING",
+      APIFY_TOKEN: APIFY_TOKEN ? "SET" : "MISSING",
+      NODE_ENV: process.env.NODE_ENV
+    });
   });
 
   // DB Proxy Route (More resilient than client-side fetch)
@@ -721,11 +737,26 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[${new Date().toISOString()}] VIRAL ROAD Server is fully operational on port ${PORT}`);
-    console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log(`[${new Date().toISOString()}] Supabase URL: ${SUPABASE_URL}`);
+  // Global Error Handler (After Routes)
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error(`[GLOBAL ERROR] ${new Date().toISOString()} | ${req.method} ${req.url}:`, err);
+    if (res.headersSent) return next(err);
+    res.status(500).json({ 
+      error: "INTERNAL_SERVER_ERROR", 
+      message: err.message || "Ocorreu um erro inesperado no servidor." 
+    });
   });
+
+  try {
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[${new Date().toISOString()}] VIRAL ROAD Server is fully operational on port ${PORT}`);
+      console.log(`[${new Date().toISOString()}] Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`[${new Date().toISOString()}] Supabase URL: ${SUPABASE_URL}`);
+    });
+  } catch (listenError) {
+    console.error("FAILED TO START SERVER:", listenError);
+    process.exit(1);
+  }
 }
 
 startServer().catch(err => {

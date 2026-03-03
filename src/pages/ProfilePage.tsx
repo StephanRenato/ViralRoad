@@ -38,8 +38,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        alert("A imagem deve ter no máximo 2MB.");
+      if (file.size > 1 * 1024 * 1024) { // Reduzido para 1MB para maior estabilidade
+        alert("A imagem deve ter no máximo 1MB para garantir o salvamento.");
         return;
       }
       const reader = new FileReader();
@@ -87,22 +87,25 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
 
     let dbSaved = false;
     let authSaved = false;
+    let lastError = "";
 
     const fetchWithRetry = async (url: string, options: any, retries = 3, delay = 1000) => {
       for (let i = 0; i < retries; i++) {
         try {
           const res = await fetch(url, options);
           if (res.ok) return res;
-          // Se for erro de servidor (5xx), tenta novamente
+          
+          const errorText = await res.text().catch(() => "Erro desconhecido");
+          console.warn(`Tentativa ${i + 1} falhou com status ${res.status}: ${errorText}`);
+          
           if (res.status >= 500 && i < retries - 1) {
-            console.warn(`Tentativa ${i + 1} falhou com status ${res.status}. Retentando em ${delay}ms...`);
             await new Promise(r => setTimeout(r, delay));
             continue;
           }
           return res;
-        } catch (err) {
+        } catch (err: any) {
           if (i === retries - 1) throw err;
-          console.warn(`Tentativa ${i + 1} falhou com erro de rede. Retentando em ${delay}ms...`);
+          console.warn(`Tentativa ${i + 1} falhou com erro de rede: ${err.message}. Retentando...`);
           await new Promise(r => setTimeout(r, delay));
         }
       }
@@ -127,15 +130,11 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
           console.log("✅ Salvo via Proxy DB:", resData);
         } else {
           const errorData = await response?.json().catch(() => ({ message: 'Erro desconhecido no proxy' }));
+          lastError = errorData.message || "Erro no Proxy DB";
           console.warn("⚠️ Proxy DB falhou:", errorData);
-          
-          // Se o erro for de coluna faltando, o servidor já tentou recuperar, 
-          // mas se ainda falhou, avisamos no log
-          if (errorData.error === 'SUPABASE_UPSERT_ERROR') {
-             console.warn("Erro de schema no Supabase detectado via Proxy.");
-          }
         }
-      } catch (proxyError) {
+      } catch (proxyError: any) {
+        lastError = proxyError.message || "Erro de rede no Proxy DB";
         console.warn("⚠️ Erro de rede ou timeout no Proxy DB:", proxyError);
       }
 
@@ -151,15 +150,16 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
             dbSaved = true;
             console.log("✅ Salvo via Supabase Direto");
           } else {
+            lastError = directError.message;
             console.warn("⚠️ Supabase Direto falhou:", directError);
           }
-        } catch (directExc) {
-          console.warn("⚠️ Exceção no Supabase Direto (provavelmente bloqueio de iframe):", directExc);
+        } catch (directExc: any) {
+          lastError = directExc.message;
+          console.warn("⚠️ Exceção no Supabase Direto:", directExc);
         }
       }
 
       // 3. INDEPENDENTE do DB, tenta salvar no Metadata do Auth (Redundância de Segurança)
-      // Isso garante que o sistema funcione mesmo se a tabela 'profiles' estiver inacessível
       console.log("Iniciando backup em Metadata...");
       try {
         const authResponse = await fetchWithRetry('/api/auth/update-metadata', {
@@ -173,7 +173,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
               avatar_url: localProfile.avatarUrl,
               social_profiles: localProfile.socialProfiles,
               settings: fullPayload.settings,
-              profile_type: user.profileType // Mantém o tipo de perfil
+              profile_type: user.profileType
             }
           })
         });
@@ -200,29 +200,26 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
             console.warn("⚠️ Backup em Metadata falhou totalmente:", directAuthError);
           }
         }
-      } catch (authError) {
-        console.warn("⚠️ Erro crítico no processo de backup em Metadata:", authError);
+      } catch (authError: any) {
+        console.warn("⚠️ Erro crítico no backup em Metadata:", authError);
       }
 
       if (dbSaved || authSaved) {
         setSuccessMsg(dbSaved ? 'Perfil Sincronizado com Sucesso!' : 'Perfil Salvo em Modo de Segurança');
         
-        // Atualiza LocalStorage para garantir que outras abas/páginas vejam a mudança imediatamente
         localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(localProfile.socialProfiles));
         
-        // Força atualização do estado global do usuário
         if (onRefreshUser) {
-           console.log("Solicitando atualização global do usuário...");
            await onRefreshUser();
         }
         
         setTimeout(() => setSuccessMsg(''), 4000);
       } else {
-        throw new Error("Não foi possível persistir os dados em nenhuma camada (DB ou Auth). Verifique sua conexão.");
+        throw new Error(lastError || "Não foi possível persistir os dados em nenhuma camada.");
       }
     } catch (e: any) {
-      console.error("FALHA CATASTRÓFICA NO SALVAMENTO:", e);
-      alert(`Erro ao salvar perfil: ${e.message || 'Erro de conexão persistente'}`);
+      console.error("FALHA NO SALVAMENTO:", e);
+      alert(`Erro ao salvar perfil: ${e.message || 'Erro de conexão persistente'}. Tente novamente em instantes.`);
     } finally {
       setSaving(false);
     }
