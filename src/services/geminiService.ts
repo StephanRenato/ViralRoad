@@ -1,39 +1,28 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult } from "../types";
 
 const SYSTEM_PROMPT = `Você é o VIRAL ROAD, estrategista de elite. Responda em PT-BR.`;
 
-const getApiKey = () => {
-  const envKey = process.env.GEMINI_API_KEY;
-  if (envKey && envKey !== 'GEMINI_KEY_MISSING' && envKey !== 'undefined') {
-    return envKey;
-  }
-  return ''; // No fallback for security
-};
-
 async function callGeminiHybrid(model: string, prompt: string, config: any) {
   try {
-    const apiKey = getApiKey();
-    const ai = new GoogleGenAI({ apiKey });
-    
-    const response = await ai.models.generateContent({
-      model,
-      contents: prompt,
-      config
+    const response = await fetch('/api/ia-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        contents: prompt,
+        config
+      })
     });
-    
-    const rawText = response.text || '{}';
-    // Clean JSON if needed (some models might include markdown code blocks)
-    const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
-    
-    try {
-      return JSON.parse(cleanText);
-    } catch (e) {
-      return { text: rawText, raw: cleanText };
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || errorData.error || `Erro na API: ${response.status}`);
     }
+
+    return await response.json();
   } catch (error: any) {
     console.error("Erro na geração de narrativas:", error);
-    throw new Error(error.message || `Erro na API: ${error.status || 'unknown'}`);
+    throw error;
   }
 }
 
@@ -51,10 +40,10 @@ export async function generateNarratives(params: any) {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        analysis_insight: { type: Type.STRING },
-        narratives: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, description: { type: Type.STRING } } } }
+        analysis_insight: { type: "STRING" },
+        narratives: { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, description: { type: "STRING" } } } }
       }
     }
   });
@@ -72,8 +61,8 @@ export async function generateHeadlines(params: any) {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
-      properties: { headlines: { type: Type.ARRAY, items: { type: Type.STRING } } }
+      type: "OBJECT",
+      properties: { headlines: { type: "ARRAY", items: { type: "STRING" } } }
     }
   });
 }
@@ -98,12 +87,12 @@ export async function generateFinalStrategy(params: any) {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        script: { type: Type.STRING },
-        caption: { type: Type.STRING },
-        hashtags: { type: Type.STRING },
-        creativeDirection: { type: Type.STRING }
+        script: { type: "STRING" },
+        caption: { type: "STRING" },
+        hashtags: { type: "STRING" },
+        creativeDirection: { type: "STRING" }
       }
     }
   });
@@ -136,36 +125,36 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
-            type: Type.OBJECT,
+            type: "OBJECT",
             properties: {
                 results: {
-                    type: Type.ARRAY,
+                    type: "ARRAY",
                     items: {
-                        type: Type.OBJECT,
+                        type: "OBJECT",
                         properties: {
-                            profile_id: { type: Type.STRING },
+                            profile_id: { type: "STRING" },
                             analysis: {
-                                type: Type.OBJECT,
+                                type: "OBJECT",
                                 properties: {
-                                    viral_score: { type: Type.NUMBER },
-                                    best_format: { type: Type.STRING },
-                                    frequency_suggestion: { type: Type.STRING },
-                                    content_pillars: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                    viral_score: { type: "NUMBER" },
+                                    best_format: { type: "STRING" },
+                                    frequency_suggestion: { type: "STRING" },
+                                    content_pillars: { type: "ARRAY", items: { type: "STRING" } },
                                     diagnostic: {
-                                        type: Type.OBJECT,
+                                        type: "OBJECT",
                                         properties: {
-                                            status_label: { type: Type.STRING },
-                                            key_action_item: { type: Type.STRING },
-                                            tone_audit: { type: Type.STRING },
-                                            content_strategy_advice: { type: Type.STRING }
+                                            status_label: { type: "STRING" },
+                                            key_action_item: { type: "STRING" },
+                                            tone_audit: { type: "STRING" },
+                                            content_strategy_advice: { type: "STRING" }
                                         }
                                     },
                                     next_post_recommendation: {
-                                        type: Type.OBJECT,
+                                        type: "OBJECT",
                                         properties: {
-                                            format: { type: Type.STRING },
-                                            topic: { type: Type.STRING },
-                                            reason: { type: Type.STRING }
+                                            format: { type: "STRING" },
+                                            topic: { type: "STRING" },
+                                            reason: { type: "STRING" }
                                         }
                                     }
                                 }
@@ -183,12 +172,12 @@ export async function auditUserProfile(params: any) {
   return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        score: { type: Type.NUMBER },
-        market_status: { type: Type.STRING },
-        verdict: { type: Type.STRING },
-        tip: { type: Type.STRING }
+        score: { type: "NUMBER" },
+        market_status: { type: "STRING" },
+        verdict: { type: "STRING" },
+        tip: { type: "STRING" }
       }
     }
   });
@@ -198,7 +187,7 @@ export async function generateHookSeedIdeas(params: any) {
     const prompt = `Temas virais para ${params.profileType}.`;
     return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
-        responseSchema: { type: Type.OBJECT, properties: { topics: { type: Type.ARRAY, items: { type: Type.STRING } } } }
+        responseSchema: { type: "OBJECT", properties: { topics: { type: "ARRAY", items: { type: "STRING" } } } }
     });
 }
 
@@ -207,16 +196,16 @@ export async function generateHooksFromTopic(params: any) {
     return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
         responseSchema: {
-            type: Type.OBJECT,
+            type: "OBJECT",
             properties: {
                 hooks: {
-                    type: Type.ARRAY,
+                    type: "ARRAY",
                     items: {
-                        type: Type.OBJECT,
+                        type: "OBJECT",
                         properties: {
-                            content: { type: Type.STRING },
-                            viral_percentage: { type: Type.NUMBER },
-                            explanation: { type: Type.STRING }
+                            content: { type: "STRING" },
+                            viral_percentage: { type: "NUMBER" },
+                            explanation: { type: "STRING" }
                         }
                     }
                 }

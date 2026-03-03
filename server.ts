@@ -477,6 +477,192 @@ async function startServer() {
     }
   });
 
+  // Gemini IA Proxy Route
+  app.post("/api/ia-proxy", async (req, res) => {
+    console.log(`${new Date().toISOString()} | Gemini IA Proxy Request received`);
+    try {
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      
+      if (!apiKey || apiKey === 'undefined' || apiKey === 'GEMINI_KEY_MISSING' || apiKey.length < 10) {
+        console.error("GEMINI_API_KEY MISSING OR INVALID");
+        return res.status(401).json({ 
+          error: "GEMINI_KEY_MISSING", 
+          message: "A chave da API Gemini (GEMINI_API_KEY) não foi configurada no servidor." 
+        });
+      }
+
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey });
+      const { contents, config, model } = req.body || {};
+
+      const response = await ai.models.generateContent({
+        model: model || "gemini-3-flash-preview",
+        contents,
+        config
+      });
+
+      // Handle image generation (parts with inlineData)
+      const candidate = response.candidates?.[0];
+      if (candidate?.content?.parts) {
+        for (const part of candidate.content.parts) {
+          if (part.inlineData) {
+            return res.status(200).json({ 
+              image: {
+                data: part.inlineData.data,
+                mimeType: part.inlineData.mimeType
+              }
+            });
+          }
+        }
+      }
+
+      const rawText = response.text || '{}';
+      // Clean JSON if needed
+      const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
+      
+      let parsedData;
+      try {
+        parsedData = JSON.parse(cleanText);
+      } catch (e) {
+        parsedData = { text: rawText, raw: cleanText };
+      }
+
+      return res.status(200).json(parsedData);
+    } catch (error: any) {
+      console.error("Gemini Proxy Error:", error);
+      
+      const errorMsg = error.message || "";
+      if (errorMsg.includes("leaked") || errorMsg.includes("403")) {
+        return res.status(403).json({ 
+          error: "GEMINI_KEY_LEAKED", 
+          message: "Sua chave de API Gemini foi reportada como vazada pelo Google. Por favor, gere uma nova chave no Google AI Studio e atualize o ambiente." 
+        });
+      }
+
+      if (errorMsg.includes("API key not valid") || errorMsg.includes("401")) {
+        return res.status(401).json({ 
+          error: "INVALID_API_KEY", 
+          message: "A chave da API Gemini é inválida ou expirou." 
+        });
+      }
+
+      return res.status(500).json({ 
+        error: "GEMINI_PROXY_ERROR", 
+        message: error.message || "Erro interno no processamento da IA." 
+      });
+    }
+  });
+
+  // Gemini Health Route
+  app.get("/api/gemini-health", async (req, res) => {
+    try {
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      if (!apiKey || apiKey.length < 10) {
+        return res.json({ status: "error", message: "Chave ausente ou curta demais" });
+      }
+      
+      const { GoogleGenAI } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: "ping",
+        config: { maxOutputTokens: 1 }
+      });
+      
+      if (response.text) {
+        return res.json({ status: "ok", message: "Gemini está operacional" });
+      }
+      return res.json({ status: "error", message: "Resposta vazia do Gemini" });
+    } catch (error: any) {
+      console.error("Gemini Health Error:", error);
+      return res.json({ 
+        status: "error", 
+        message: error.message || "Erro desconhecido",
+        isLeaked: error.message?.includes("leaked")
+      });
+    }
+  });
+
+  // Social Analyze Proxy Route
+  app.post("/api/social-analyze", async (req, res) => {
+    console.log(`${new Date().toISOString()} | Social Analyze Proxy Request received`);
+    try {
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      if (!apiKey || apiKey.length < 10) {
+        return res.status(401).json({ error: "GEMINI_KEY_MISSING", message: "A chave da API Gemini não foi configurada." });
+      }
+
+      const { GoogleGenAI, Type } = await import("@google/genai");
+      const ai = new GoogleGenAI({ apiKey });
+      const { profiles, niche, specialization, realMetrics, objective, recentPosts } = req.body || {};
+
+      const metricsContext = realMetrics ? `
+        DADOS REAIS DE ENGAJAMENTO (@${realMetrics.handle}):
+        - Seguidores: ${realMetrics.followers}
+        - Média Likes: ${realMetrics.likes}
+        - Vídeos/Posts: ${realMetrics.posts}
+        - Taxa de Engajamento Calculada: ${realMetrics.engagement_rate}%
+      ` : "DADOS: Perfil ainda não analisado ou privado.";
+
+      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              results: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    profile_id: { type: Type.STRING },
+                    analysis: {
+                      type: Type.OBJECT,
+                      properties: {
+                        viral_score: { type: Type.NUMBER },
+                        best_format: { type: Type.STRING },
+                        frequency_suggestion: { type: Type.STRING },
+                        content_pillars: { type: Type.ARRAY, items: { type: Type.STRING } },
+                        diagnostic: {
+                          type: Type.OBJECT,
+                          properties: {
+                            status_label: { type: Type.STRING },
+                            key_action_item: { type: Type.STRING },
+                            tone_audit: { type: Type.STRING },
+                            content_strategy_advice: { type: Type.STRING }
+                          }
+                        },
+                        next_post_recommendation: {
+                          type: Type.OBJECT,
+                          properties: {
+                            format: { type: Type.STRING },
+                            topic: { type: Type.STRING },
+                            reason: { type: Type.STRING }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      const rawText = response.text || '{}';
+      const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
+      return res.status(200).json(JSON.parse(cleanText));
+    } catch (error: any) {
+      console.error("Social Analyze Proxy Error:", error);
+      return res.status(500).json({ error: error.message || "Internal Server Error" });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     console.log("Running in DEVELOPMENT mode with Vite middleware");

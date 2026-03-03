@@ -1,13 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
 import React, { useState } from "react";
-
-const getApiKey = () => {
-  const envKey = process.env.GEMINI_API_KEY;
-  if (envKey && envKey !== 'GEMINI_KEY_MISSING' && envKey !== 'undefined') {
-    return envKey;
-  }
-  return '';
-};
 
 export const IconGenerator: React.FC = () => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -16,33 +7,36 @@ export const IconGenerator: React.FC = () => {
   const generateIcon = async () => {
     setLoading(true);
     try {
-      const apiKey = getApiKey();
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash-image",
-        contents: {
-          parts: [
-            {
-              text: "A modern, minimalist app icon for 'VIRAL ROAD'. The design should feature a stylized lightning bolt integrated with a road or a growth curve, symbolizing AI-powered content strategy and viral growth. Color palette: vibrant yellow (#FFC700) and deep charcoal black. High-tech, premium aesthetic, clean lines, suitable for a mobile app icon.",
-            },
-          ],
-        },
-        config: {
-          imageConfig: {
-            aspectRatio: "1:1",
+      const response = await fetch('/api/ia-proxy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: "gemini-2.5-flash-image",
+          contents: {
+            parts: [
+              {
+                text: "A modern, minimalist app icon for 'VIRAL ROAD'. The design should feature a stylized lightning bolt integrated with a road or a growth curve, symbolizing AI-powered content strategy and viral growth. Color palette: vibrant yellow (#FFC700) and deep charcoal black. High-tech, premium aesthetic, clean lines, suitable for a mobile app icon.",
+              },
+            ],
           },
-        },
+          config: {
+            imageConfig: {
+              aspectRatio: "1:1",
+            },
+          },
+        })
       });
 
-      const candidate = response.candidates?.[0];
-      if (candidate?.content?.parts) {
-        for (const part of candidate.content.parts) {
-          if (part.inlineData) {
-            const base64EncodeString = part.inlineData.data;
-            setImageUrl(`data:image/png;base64,${base64EncodeString}`);
-            break;
-          }
-        }
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || errorData.error || "Erro ao gerar ícone");
+      }
+
+      const data = await response.json();
+      if (data.image) {
+        setImageUrl(`data:${data.image.mimeType};base64,${data.image.data}`);
+      } else {
+        console.error("No image data in response", data);
       }
     } catch (error) {
       console.error("Error generating icon:", error);
