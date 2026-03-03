@@ -102,9 +102,25 @@ const Register: React.FC<{ onRegister: any }> = () => {
     setLoading(true);
     setError('');
 
-    const finalSpecialization = specialization === 'Outro' ? customSpecialization : specialization;
-
     try {
+      // Check for leaked password
+      const leakCheckResponse = await fetch('/api/auth/check-password-leak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      
+      if (leakCheckResponse.ok) {
+        const leakData = await leakCheckResponse.json();
+        if (leakData.isLeaked) {
+          setError(`Esta senha foi encontrada em vazamentos de dados (${leakData.occurrences} vezes). Por segurança, escolha outra senha.`);
+          setLoading(false);
+          return;
+        }
+      }
+
+      const finalSpecialization = specialization === 'Outro' ? customSpecialization : specialization;
+
       const { data, error: authError } = await supabase.auth.signUp({
         email,
         password,

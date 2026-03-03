@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -94,6 +95,56 @@ async function startServer() {
       return res.status(500).json({ 
         status: 'error', 
         message: error.message || 'Falha catastrófica ao contatar Supabase' 
+      });
+    }
+  });
+
+  // Check if password has been leaked (HaveIBeenPwned API)
+  app.post("/api/auth/check-password-leak", async (req, res) => {
+    const { password } = req.body;
+
+    if (!password) {
+      return res.status(400).json({ error: "Password is required" });
+    }
+
+    try {
+      // 1. Hash the password using SHA-1
+      const sha1Hash = crypto.createHash('sha1').update(password).digest('hex').toUpperCase();
+      
+      // 2. Get the first 5 characters (prefix) and the rest (suffix)
+      const prefix = sha1Hash.substring(0, 5);
+      const suffix = sha1Hash.substring(5);
+
+      // 3. Query HIBP API (k-Anonymity)
+      const response = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`);
+      
+      if (!response.ok) {
+        throw new Error("Failed to fetch from HIBP API");
+      }
+
+      const text = await response.text();
+      const lines = text.split('\n');
+      
+      // 4. Check if the suffix exists in the results
+      let count = 0;
+      for (const line of lines) {
+        const [hashSuffix, occurrenceCount] = line.split(':');
+        if (hashSuffix.trim() === suffix) {
+          count = parseInt(occurrenceCount.trim(), 10);
+          break;
+        }
+      }
+
+      return res.json({
+        isLeaked: count > 0,
+        occurrences: count
+      });
+    } catch (error: any) {
+      console.error("HIBP Check Error:", error);
+      // Fail gracefully - if API is down, we don't block the user but log it
+      return res.json({
+        isLeaked: false,
+        error: "Could not verify password security at this time"
       });
     }
   });

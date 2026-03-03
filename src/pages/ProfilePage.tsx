@@ -247,6 +247,25 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     setChangingPassword(true);
     setPasswordMsg({ text: '', type: '' });
     try {
+      // Check for leaked password
+      const leakCheckResponse = await fetch('/api/auth/check-password-leak', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: newPassword })
+      });
+      
+      if (leakCheckResponse.ok) {
+        const leakData = await leakCheckResponse.json();
+        if (leakData.isLeaked) {
+          setPasswordMsg({ 
+            text: `Senha insegura: encontrada em vazamentos (${leakData.occurrences} vezes).`, 
+            type: 'error' 
+          });
+          setChangingPassword(false);
+          return;
+        }
+      }
+
       const { error } = await supabase.auth.updateUser({ password: newPassword });
       if (error) throw error;
       setPasswordMsg({ text: 'Senha atualizada com sucesso!', type: 'success' });
