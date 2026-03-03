@@ -208,6 +208,17 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         content_pillars: analysisRaw.content_pillars || []
       };
 
+      const minimalPostsData = postsData.map((p: any) => ({
+        displayUrl: p.displayUrl || p.thumbnailUrl || p.videoUrl,
+        likesCount: p.likesCount || 0,
+        videoViewCount: p.videoViewCount || p.playCount || 0,
+        caption: (p.caption || '').substring(0, 500),
+        timestamp: p.timestamp,
+        url: p.url,
+        shortCode: p.shortCode,
+        id: p.id
+      })).slice(0, 15);
+
       const newProfile: SocialProfile = {
         platform: activePlatform,
         url: urlToUse,
@@ -216,7 +227,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         normalized_metrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
         analysis_ai: mergedAnalysisAi,
         raw_apify_data: null, // Strip raw data to prevent 520 errors
-        recent_posts: postsData,
+        recent_posts: minimalPostsData,
         last_sync: new Date().toISOString()
       };
 

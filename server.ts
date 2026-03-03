@@ -274,12 +274,30 @@ async function startServer() {
           const isServerError = err && (
             err.status === 520 || 
             err.status >= 500 || 
-            err.message?.includes("520") || 
-            err.message?.includes("Cloudflare") ||
-            err.message?.includes("<title>") ||
-            err.message?.includes("unknown error") ||
-            err.message?.includes("timeout")
+            (typeof err.message === 'string' && (
+              err.message.includes("520") || 
+              err.message.includes("500") ||
+              err.message.includes("Cloudflare") ||
+              err.message.includes("<title>") ||
+              err.message.includes("unknown error") ||
+              err.message.includes("timeout") ||
+              err.message.includes("fetch")
+            )) ||
+            !err.status // Network errors often have no status
           );
+
+          // If payload is MASSIVE (> 2MB), start stripping immediately even on attempt 1 if it failed
+          if (isServerError && payloadSize > 2 * 1024 * 1024 && attempt === 1) {
+            console.warn(`[${requestId}] 🚨 Payload too large (${(payloadSize / 1024).toFixed(2)} KB). Forcing Safe Mode.`);
+            const nextPayload = { ...currentPayload };
+            if (nextPayload.social_profiles) {
+              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
+                const { raw_apify_data, recent_posts, ...rest } = p;
+                return rest;
+              });
+            }
+            return performUpsertWithRecovery(nextPayload, attempt + 1);
+          }
 
           if (isColumnError && attempt < 10) {
             console.warn(`[${requestId}] [Attempt ${attempt}] Column error: ${error.message}`);
@@ -324,13 +342,19 @@ async function startServer() {
               strippedSomething = true;
               strippedLabel = "recent_posts";
             }
-            else if (attempt === 4 && nextPayload.social_profiles) {
+            else if (attempt === 4 && nextPayload.avatar_url && nextPayload.avatar_url.length > 2000) {
+              // Strip large base64 avatar_url
+              delete nextPayload.avatar_url;
+              strippedSomething = true;
+              strippedLabel = "avatar_url (Large Base64)";
+            }
+            else if (attempt === 5 && nextPayload.social_profiles) {
               // Truncate long analysis strings
               nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
                 if (p.analysis_ai?.diagnostic) {
                   const diag = { ...p.analysis_ai.diagnostic };
                   ['content_strategy_advice', 'tone_audit', 'visual_style'].forEach(key => {
-                    if (diag[key]) diag[key] = diag[key].substring(0, 300) + "...";
+                    if (typeof diag[key] === 'string') diag[key] = diag[key].substring(0, 200) + "...";
                   });
                   return { ...p, analysis_ai: { ...p.analysis_ai, diagnostic: diag } };
                 }
@@ -339,12 +363,12 @@ async function startServer() {
               strippedSomething = true;
               strippedLabel = "truncated analysis";
             }
-            else if (attempt === 5 && nextPayload.settings) {
+            else if (attempt === 6 && nextPayload.settings) {
               delete nextPayload.settings;
               strippedSomething = true;
               strippedLabel = "settings";
             }
-            else if (attempt === 6 && nextPayload.social_profiles) {
+            else if (attempt === 7 && nextPayload.social_profiles) {
               // Nuclear: Only keep the last profile
               if (nextPayload.social_profiles.length > 1) {
                 nextPayload.social_profiles = [nextPayload.social_profiles[nextPayload.social_profiles.length - 1]];
@@ -352,10 +376,16 @@ async function startServer() {
                 strippedLabel = "all but last profile";
               }
             }
-            else if (attempt === 7 && nextPayload.social_profiles) {
+            else if (attempt === 8 && nextPayload.social_profiles) {
               delete nextPayload.social_profiles;
               strippedSomething = true;
               strippedLabel = "social_profiles (Nuclear)";
+            }
+            else if (attempt === 9) {
+              // Absolute minimal payload
+              nextPayload = { id: userId, updated_at: new Date().toISOString() };
+              strippedSomething = true;
+              strippedLabel = "everything but ID (Absolute Minimal)";
             }
 
             if (strippedSomething) {
