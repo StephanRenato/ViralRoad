@@ -68,23 +68,50 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     }
     setSaving(true);
     setSuccessMsg('');
-    try {
-      // 1. Tenta o salvamento via Proxy do Servidor (Mais resiliente a bloqueios de rede/CORS)
-      const fullPayload = {
-        name: localProfile.name,
-        specialization: localProfile.specialization,
-        avatar_url: localProfile.avatarUrl,
-        social_profiles: localProfile.socialProfiles,
-        settings: {
-           notifications_ai_daily: localProfile.notificationsAiDaily,
-           notifications_engagement: localProfile.notificationsEngagement
+    
+    const fullPayload = {
+      name: localProfile.name,
+      specialization: localProfile.specialization,
+      avatar_url: localProfile.avatarUrl,
+      social_profiles: localProfile.socialProfiles,
+      settings: {
+         notifications_ai_daily: localProfile.notificationsAiDaily,
+         notifications_engagement: localProfile.notificationsEngagement
+      }
+    };
+
+    console.log("Iniciando salvamento robusto do perfil...", fullPayload);
+
+    // Salva localmente IMEDIATAMENTE para garantir que o Road Performance veja a mudança
+    localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(localProfile.socialProfiles));
+
+    let dbSaved = false;
+    let authSaved = false;
+
+    const fetchWithRetry = async (url: string, options: any, retries = 3, delay = 1000) => {
+      for (let i = 0; i < retries; i++) {
+        try {
+          const res = await fetch(url, options);
+          if (res.ok) return res;
+          // Se for erro de servidor (5xx), tenta novamente
+          if (res.status >= 500 && i < retries - 1) {
+            console.warn(`Tentativa ${i + 1} falhou com status ${res.status}. Retentando em ${delay}ms...`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+          }
+          return res;
+        } catch (err) {
+          if (i === retries - 1) throw err;
+          console.warn(`Tentativa ${i + 1} falhou com erro de rede. Retentando em ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
         }
-      };
+      }
+    };
 
-      console.log("Salvando perfil com payload:", fullPayload);
-
+    try {
+      // 1. Tenta o salvamento via Proxy do Servidor
       try {
-        const response = await fetch('/api/db/upsert-profile', {
+        const response = await fetchWithRetry('/api/db/upsert-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -93,81 +120,86 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
           })
         });
 
-        if (response.ok) {
-          setSuccessMsg('Perfil Sincronizado!');
+        if (response && response.ok) {
+          dbSaved = true;
+          console.log("✅ Salvo via Proxy DB");
         } else {
-          const errorData = await response.json().catch(() => ({ message: 'Erro desconhecido no servidor' }));
-          throw new Error(errorData.message || `Erro ${response.status} no proxy do servidor`);
+          const errorData = await response?.json().catch(() => ({ message: 'Erro no proxy' }));
+          console.warn("⚠️ Proxy DB falhou:", errorData);
         }
-      } catch (proxyError: any) {
-        console.warn("Proxy falhou, tentando salvamento direto no Supabase...", proxyError);
-        
-        // Se for erro de rede (Failed to fetch), avisa o usuário mas tenta o fallback
-        const isNetworkError = proxyError.message?.includes('fetch') || proxyError.name === 'TypeError';
-        
-        // 2. Fallback: Salvamento direto no Supabase (Caso o servidor esteja offline ou com erro)
+      } catch (proxyError) {
+        console.warn("⚠️ Erro de rede persistente no Proxy DB:", proxyError);
+      }
+
+      // 2. Se o proxy falhou, tenta salvamento direto no Supabase (Fallback)
+      if (!dbSaved) {
         const { error: directError } = await supabase
           .from('profiles')
           .upsert({ ...fullPayload, id: user.id }, { onConflict: 'id' });
 
-        if (directError) {
-          console.error("Falha no salvamento direto:", directError);
-          
-          // 3. Último recurso: Salva no Metadata do Auth via Proxy
-          try {
-            const authResponse = await fetch('/api/auth/update-metadata', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                userId: user.id,
-                metadata: {
-                  name: localProfile.name,
-                  specialization: localProfile.specialization,
-                  avatar_url: localProfile.avatarUrl,
-                  social_profiles: localProfile.socialProfiles,
-                  settings: fullPayload.settings
-                }
-              })
-            });
-
-            if (!authResponse.ok) {
-              const authErrorData = await authResponse.json().catch(() => ({ message: 'Erro de rede no proxy de auth' }));
-              throw new Error(authErrorData.message || 'Erro no proxy de auth');
-            }
-            setSuccessMsg('Perfil Salvo (Modo de Segurança)');
-          } catch (authProxyError: any) {
-            console.error("Proxy de auth também falhou:", authProxyError);
-            
-            // Tenta o último recurso real: Auth direto
-            try {
-              const { error: finalAuthError } = await supabase.auth.updateUser({
-                data: {
-                  name: localProfile.name,
-                  specialization: localProfile.specialization,
-                  avatar_url: localProfile.avatarUrl,
-                  social_profiles: localProfile.socialProfiles,
-                  settings: fullPayload.settings
-                }
-              });
-              if (finalAuthError) throw finalAuthError;
-              setSuccessMsg('Perfil Salvo (Modo de Segurança)');
-            } catch (finalError: any) {
-               if (isNetworkError) {
-                 throw new Error("Erro de conexão com o servidor. Verifique se o servidor está rodando.");
-               }
-               throw finalError;
-            }
-          }
+        if (!directError) {
+          dbSaved = true;
+          console.log("✅ Salvo via Supabase Direto");
         } else {
-          setSuccessMsg('Perfil Sincronizado!');
+          console.warn("⚠️ Supabase Direto falhou:", directError);
         }
       }
 
-      // Pequeno delay para garantir que o Supabase processou a alteração antes do refresh
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
-      if (onRefreshUser) await onRefreshUser();
-      setTimeout(() => setSuccessMsg(''), 3000);
+      // 3. INDEPENDENTE do DB, tenta salvar no Metadata do Auth (Redundância Crítica)
+      // Isso garante que o Road Performance funcione mesmo se a tabela 'profiles' estiver quebrada
+      try {
+        const authResponse = await fetchWithRetry('/api/auth/update-metadata', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            metadata: {
+              name: localProfile.name,
+              specialization: localProfile.specialization,
+              avatar_url: localProfile.avatarUrl,
+              social_profiles: localProfile.socialProfiles,
+              settings: fullPayload.settings
+            }
+          })
+        });
+
+        if (authResponse && authResponse.ok) {
+          authSaved = true;
+          console.log("✅ Salvo via Proxy Auth Metadata");
+        } else {
+          // Fallback para Auth direto se o proxy de admin falhar
+          const { error: directAuthError } = await supabase.auth.updateUser({
+            data: {
+              name: localProfile.name,
+              specialization: localProfile.specialization,
+              avatar_url: localProfile.avatarUrl,
+              social_profiles: localProfile.socialProfiles,
+              settings: fullPayload.settings
+            }
+          });
+          if (!directAuthError) {
+            authSaved = true;
+            console.log("✅ Salvo via Supabase Auth Direto");
+          }
+        }
+      } catch (authError) {
+        console.warn("⚠️ Falha ao salvar em Metadata:", authError);
+      }
+
+      if (dbSaved || authSaved) {
+        setSuccessMsg(dbSaved ? 'Perfil Sincronizado!' : 'Perfil Salvo (Modo de Segurança)');
+        
+        // Salva localmente para garantir persistência imediata
+        localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(localProfile.socialProfiles));
+        
+        // Pequeno delay para garantir que o Supabase processou a alteração antes do refresh
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        if (onRefreshUser) await onRefreshUser();
+        setTimeout(() => setSuccessMsg(''), 3000);
+      } else {
+        throw new Error("Não foi possível salvar em nenhum dos sistemas de armazenamento.");
+      }
     } catch (e: any) {
       console.error("Erro crítico ao salvar perfil:", e);
       alert(`Erro ao salvar: ${e.message || 'Verifique sua conexão'}`);

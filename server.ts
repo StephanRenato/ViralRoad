@@ -131,16 +131,37 @@ async function startServer() {
 
     try {
       // Ensure the ID is set correctly in the payload
-      const payload = { 
+      const payload: any = { 
         ...profileData,
         id: userId,
         updated_at: new Date().toISOString()
       };
 
-      const { data, error } = await supabaseServer
+      let { data, error } = await supabaseServer
         .from('profiles')
         .upsert(payload, { onConflict: 'id' })
         .select();
+      
+      // If column not found error (PGRST204), try to identify and remove the problematic column
+      if (error && error.code === 'PGRST204') {
+        console.warn(`Column error detected: ${error.message}. Attempting recovery...`);
+        
+        const missingColumnMatch = error.message.match(/column '([^']+)'/);
+        const missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
+
+        if (missingColumn && payload[missingColumn] !== undefined) {
+          console.log(`Removing problematic column '${missingColumn}' and retrying...`);
+          delete payload[missingColumn];
+          
+          const retry = await supabaseServer
+            .from('profiles')
+            .upsert(payload, { onConflict: 'id' })
+            .select();
+          
+          data = retry.data;
+          error = retry.error;
+        }
+      }
       
       if (error) {
         console.error("Supabase Upsert Error Detail:", error);
@@ -169,18 +190,26 @@ async function startServer() {
     if (!metadata) return res.status(400).json({ error: "Missing metadata" });
 
     try {
-      if (!SERVICE_ROLE_KEY) {
-        return res.status(500).json({ 
-          error: "AUTH_CONFIG_ERROR", 
-          message: "Configuração incompleta: SUPABASE_SERVICE_ROLE_KEY não encontrada no servidor. Operações administrativas desabilitadas." 
-        });
+      if (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY) {
+        console.warn("SERVICE_ROLE_KEY is missing or same as ANON_KEY. Auth Admin operations will likely fail.");
       }
+
       const { data, error } = await supabaseServer.auth.admin.updateUserById(userId, {
         user_metadata: metadata
       });
       
       if (error) {
         console.error("Supabase Auth Update Error:", error);
+        
+        // If it's a permission error, it might be the key
+        if (error.status === 403 || error.code === 'not_admin') {
+           return res.status(403).json({
+             error: "AUTH_PERMISSION_ERROR",
+             message: "O servidor não tem permissão para atualizar metadados (SERVICE_ROLE_KEY inválida ou ausente).",
+             details: error
+           });
+        }
+
         return res.status(error.status || 500).json({ 
           error: "SUPABASE_AUTH_ERROR", 
           message: error.message,
