@@ -3,7 +3,7 @@ import { supabase } from '../services/supabase';
 import { User } from '../types';
 import { Anchor, Loader2, Copy, CheckCircle2, Sparkles, X, Save, Trash2, Wand2, AlertTriangle, ArrowRight, Zap, Trophy, Target, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { generateHookSeedIdeas, generateHooksFromTopic } from '../services/geminiService';
+import { generateHookSeedIdeas, generateHooksFromTopic } from '../services/aiService';
 
 interface HooksLibraryPageProps {
   user: User;

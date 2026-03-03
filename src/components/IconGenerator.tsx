@@ -11,14 +11,8 @@ export const IconGenerator: React.FC = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: "gemini-2.5-flash-image",
-          contents: {
-            parts: [
-              {
-                text: "A modern, minimalist app icon for 'VIRAL ROAD'. The design should feature a stylized lightning bolt integrated with a road or a growth curve, symbolizing AI-powered content strategy and viral growth. Color palette: vibrant yellow (#FFC700) and deep charcoal black. High-tech, premium aesthetic, clean lines, suitable for a mobile app icon.",
-              },
-            ],
-          },
+          model: "dall-e-3",
+          contents: "A modern, minimalist app icon for 'VIRAL ROAD'. The design should feature a stylized lightning bolt integrated with a road or a growth curve, symbolizing AI-powered content strategy and viral growth. Color palette: vibrant yellow (#FFC700) and deep charcoal black. High-tech, premium aesthetic, clean lines, suitable for a mobile app icon.",
           config: {
             imageConfig: {
               aspectRatio: "1:1",

@@ -11,7 +11,7 @@ import {
 } from '../types';
 import { 
   generateNarratives, generateHeadlines, generateFinalStrategy
-} from '../services/geminiService';
+} from '../services/aiService';
 import { supabase } from '../services/supabase';
 import { NarrativeSkeleton, FinalStrategySkeleton } from '../components/PerformancePlaceholders';
 

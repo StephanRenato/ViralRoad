@@ -27,7 +27,7 @@ const Privacy: React.FC = () => {
 
           <section className="space-y-4">
             <h2 className="text-xl font-black text-white italic uppercase tracking-tight">2. Uso da Inteligência Artificial</h2>
-            <p>Os briefings e temas inseridos por você são processados via API do Google Gemini para a geração de roteiros. Não compartilhamos seus dados brutos com terceiros para fins publicitários.</p>
+            <p>Os briefings e temas inseridos por você são processados via API da OpenAI para a geração de roteiros. Não compartilhamos seus dados brutos com terceiros para fins publicitários.</p>
           </section>
 
           <section className="space-y-4">

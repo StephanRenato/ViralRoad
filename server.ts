@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from "openai";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -477,123 +478,111 @@ async function startServer() {
     }
   });
 
-  // Gemini IA Proxy Route
+  // OpenAI IA Proxy Route
   app.post("/api/ia-proxy", async (req, res) => {
-    console.log(`${new Date().toISOString()} | Gemini IA Proxy Request received`);
+    console.log(`${new Date().toISOString()} | OpenAI IA Proxy Request received`);
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
       
-      if (!apiKey || apiKey === 'undefined' || apiKey === 'GEMINI_KEY_MISSING' || apiKey.length < 10) {
-        console.error("GEMINI_API_KEY MISSING OR INVALID");
+      if (!apiKey || apiKey.length < 10) {
+        console.error("OPENAI_API_KEY MISSING OR INVALID");
         return res.status(401).json({ 
-          error: "GEMINI_KEY_MISSING", 
-          message: "A chave da API Gemini (GEMINI_API_KEY) não foi configurada no servidor." 
+          error: "OPENAI_KEY_MISSING", 
+          message: "A chave da API OpenAI (OPENAI_API_KEY) não foi configurada no servidor." 
         });
       }
 
-      const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey });
+      const openai = new OpenAI({ apiKey });
       const { contents, config, model } = req.body || {};
 
-      const response = await ai.models.generateContent({
-        model: model || "gemini-3-flash-preview",
-        contents,
-        config
-      });
+      // If it's an image generation request (based on model or some flag)
+      if (model === 'gemini-2.5-flash-image' || model?.includes('image')) {
+        const prompt = typeof contents === 'string' ? contents : (contents?.parts?.[0]?.text || "Generate an icon");
+        const response = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: prompt,
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json"
+        });
 
-      // Handle image generation (parts with inlineData)
-      const candidate = response.candidates?.[0];
-      if (candidate?.content?.parts) {
-        for (const part of candidate.content.parts) {
-          if (part.inlineData) {
-            return res.status(200).json({ 
-              image: {
-                data: part.inlineData.data,
-                mimeType: part.inlineData.mimeType
-              }
-            });
-          }
+        if (response.data && response.data[0] && response.data[0].b64_json) {
+          return res.status(200).json({ 
+            image: {
+              data: response.data[0].b64_json,
+              mimeType: "image/png"
+            }
+          });
         }
+        throw new Error("Falha na geração da imagem: dados ausentes");
       }
 
-      const rawText = response.text || '{}';
-      // Clean JSON if needed
-      const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
+      // Standard text generation
+      const prompt = typeof contents === 'string' ? contents : JSON.stringify(contents);
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: config?.responseMimeType === "application/json" ? { type: "json_object" } : undefined
+      });
+
+      const rawText = completion.choices[0].message.content || '{}';
       
       let parsedData;
       try {
-        parsedData = JSON.parse(cleanText);
+        parsedData = JSON.parse(rawText);
       } catch (e) {
-        parsedData = { text: rawText, raw: cleanText };
+        parsedData = { text: rawText };
       }
 
       return res.status(200).json(parsedData);
     } catch (error: any) {
-      console.error("Gemini Proxy Error:", error);
+      console.error("OpenAI Proxy Error:", error);
       
-      const errorMsg = error.message || "";
-      if (errorMsg.includes("leaked") || errorMsg.includes("403")) {
-        return res.status(403).json({ 
-          error: "GEMINI_KEY_LEAKED", 
-          message: "Sua chave de API Gemini foi reportada como vazada pelo Google. Por favor, gere uma nova chave no Google AI Studio e atualize o ambiente." 
-        });
-      }
-
-      if (errorMsg.includes("API key not valid") || errorMsg.includes("401")) {
-        return res.status(401).json({ 
-          error: "INVALID_API_KEY", 
-          message: "A chave da API Gemini é inválida ou expirou." 
-        });
-      }
-
       return res.status(500).json({ 
-        error: "GEMINI_PROXY_ERROR", 
+        error: "OPENAI_PROXY_ERROR", 
         message: error.message || "Erro interno no processamento da IA." 
       });
     }
   });
 
-  // Gemini Health Route
+  // OpenAI Health Route
   app.get("/api/gemini-health", async (req, res) => {
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
       if (!apiKey || apiKey.length < 10) {
-        return res.json({ status: "error", message: "Chave ausente ou curta demais" });
+        return res.json({ status: "error", message: "Chave OpenAI ausente ou curta demais" });
       }
       
-      const { GoogleGenAI } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: "ping",
-        config: { maxOutputTokens: 1 }
+      const openai = new OpenAI({ apiKey });
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1
       });
       
-      if (response.text) {
-        return res.json({ status: "ok", message: "Gemini está operacional" });
+      if (response.choices[0].message.content) {
+        return res.json({ status: "ok", message: "OpenAI está operacional" });
       }
-      return res.json({ status: "error", message: "Resposta vazia do Gemini" });
+      return res.json({ status: "error", message: "Resposta vazia da OpenAI" });
     } catch (error: any) {
-      console.error("Gemini Health Error:", error);
+      console.error("OpenAI Health Error:", error);
       return res.json({ 
         status: "error", 
-        message: error.message || "Erro desconhecido",
-        isLeaked: error.message?.includes("leaked")
+        message: error.message || "Erro desconhecido"
       });
     }
   });
 
-  // Social Analyze Proxy Route
+  // Social Analyze Proxy Route (OpenAI version)
   app.post("/api/social-analyze", async (req, res) => {
     console.log(`${new Date().toISOString()} | Social Analyze Proxy Request received`);
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
+      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
       if (!apiKey || apiKey.length < 10) {
-        return res.status(401).json({ error: "GEMINI_KEY_MISSING", message: "A chave da API Gemini não foi configurada." });
+        return res.status(401).json({ error: "OPENAI_KEY_MISSING", message: "A chave da API OpenAI não foi configurada." });
       }
 
-      const { GoogleGenAI, Type } = await import("@google/genai");
-      const ai = new GoogleGenAI({ apiKey });
+      const openai = new OpenAI({ apiKey });
       const { profiles, niche, specialization, realMetrics, objective, recentPosts } = req.body || {};
 
       const metricsContext = realMetrics ? `
@@ -604,59 +593,16 @@ async function startServer() {
         - Taxa de Engajamento Calculada: ${realMetrics.engagement_rate}%
       ` : "DADOS: Perfil ainda não analisado ou privado.";
 
-      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}`;
+      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}. Retorne um JSON com o campo "results" contendo um array de objetos com "profile_id" e "analysis" (viral_score, best_format, frequency_suggestion, content_pillars, diagnostic, next_post_recommendation).`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              results: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    profile_id: { type: Type.STRING },
-                    analysis: {
-                      type: Type.OBJECT,
-                      properties: {
-                        viral_score: { type: Type.NUMBER },
-                        best_format: { type: Type.STRING },
-                        frequency_suggestion: { type: Type.STRING },
-                        content_pillars: { type: Type.ARRAY, items: { type: Type.STRING } },
-                        diagnostic: {
-                          type: Type.OBJECT,
-                          properties: {
-                            status_label: { type: Type.STRING },
-                            key_action_item: { type: Type.STRING },
-                            tone_audit: { type: Type.STRING },
-                            content_strategy_advice: { type: Type.STRING }
-                          }
-                        },
-                        next_post_recommendation: {
-                          type: Type.OBJECT,
-                          properties: {
-                            format: { type: Type.STRING },
-                            topic: { type: Type.STRING },
-                            reason: { type: Type.STRING }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        }
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" }
       });
 
-      const rawText = response.text || '{}';
-      const cleanText = rawText.replace(/```json\n?|\n?```/g, '').trim();
-      return res.status(200).json(JSON.parse(cleanText));
+      const rawText = completion.choices[0].message.content || '{}';
+      return res.status(200).json(JSON.parse(rawText));
     } catch (error: any) {
       console.error("Social Analyze Proxy Error:", error);
       return res.status(500).json({ error: error.message || "Internal Server Error" });

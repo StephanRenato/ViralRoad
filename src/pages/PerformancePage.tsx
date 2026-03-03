@@ -11,7 +11,7 @@ import {
   WifiOff, Eye, Trophy, UserPlus, AlertTriangle, Layers, FileText, Calendar, Check, Wand2, Microscope, Terminal, ArrowRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { analyzeSocialStrategy, auditUserProfile } from '../services/geminiService';
+import { analyzeSocialStrategy, auditUserProfile } from '../services/aiService';
 import { 
   fetchTikTokProfileData, 
   fetchInstagramProfileData, 
@@ -119,7 +119,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     setProgress(5);
 
     try {
-      // PRE-CHECK: Verificar Gemini antes de gastar créditos Apify
+      // PRE-CHECK: Verificar OpenAI antes de gastar créditos Apify
       if (!forceMock) {
         addLog("Validando motores de IA...");
         const healthRes = await fetch('/api/gemini-health');
@@ -164,11 +164,11 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       
       setProgress(50);
       addLog(`Dados brutos extraídos. Normalizando métricas...`);
-
+ 
       const normalized = normalizeProfile(rawResponse, platformKey);
       const score = roadScore(normalized);
       setProgress(70);
-      addLog(`Enviando contexto neural para Gemini AI...`);
+      addLog(`Enviando contexto neural para OpenAI AI...`);
 
       const aiRes = await analyzeSocialStrategy({
         profiles: [{ id: activePlatform }],
@@ -261,11 +261,11 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       } else if (errorMsg.includes("504") || errorMsg.includes("TIMEOUT")) {
         errorMsg = "⏳ TEMPO EXCEDIDO: A plataforma demorou muito para responder. Isso é comum em perfis grandes ou horários de pico. Tente novamente em instantes.";
       } else if (errorMsg.includes("GEMINI_KEY_LEAKED") || errorMsg.includes("leaked")) {
-        errorMsg = "🚫 CHAVE VAZADA: Sua chave de API Gemini foi reportada como vazada pelo Google. Por favor, gere uma nova chave no Google AI Studio e atualize o ambiente.";
-      } else if (errorMsg.includes("GEMINI_KEY_MISSING")) {
-        errorMsg = "🚫 CHAVE AUSENTE: A variável GEMINI_API_KEY não está configurada no servidor.";
-      } else if (errorMsg.includes("401") || errorMsg.includes("INVALID_API_KEY")) {
-        errorMsg = "🚫 CHAVE INVÁLIDA: Sua chave de API Gemini foi rejeitada pelo Google. Verifique se ela foi copiada corretamente do Google AI Studio.";
+        errorMsg = "🚫 CHAVE VAZADA: Sua chave de API OpenAI foi reportada como vazada. Por favor, gere uma nova chave no painel da OpenAI e atualize o ambiente.";
+      } else if (errorMsg.includes("OPENAI_KEY_MISSING")) {
+        errorMsg = "🚫 CHAVE AUSENTE: A variável OPENAI_API_KEY não está configurada no servidor.";
+      } else if (errorMsg.includes("401") || errorMsg.includes("INVALID_API_KEY") || errorMsg.includes("OPENAI")) {
+        errorMsg = "🚫 CHAVE INVÁLIDA: Sua chave de API OpenAI foi rejeitada. Verifique se ela foi copiada corretamente.";
       }
       
       setUrlError(errorMsg);
@@ -300,7 +300,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       const res = await fetch('/api/apify-health');
       const data = await res.json();
       
-      addLog("Iniciando diagnóstico de conexão Gemini (IA)...");
+      addLog("Iniciando diagnóstico de conexão OpenAI (IA)...");
       const resIA = await fetch('/api/gemini-health');
       const dataIA = await resIA.json();
 
@@ -315,10 +315,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       setDiagnosticStatus({ apify: data, gemini: dataIA, dbProxy: dataDB });
 
       if (data.status === 'ok' && dataIA.status === 'ok' && (dataDB.status === 'ok' || dataDB.status === 'success')) {
-        addLog(`✅ Tudo OK! Apify: ${data.user} | Gemini: Ativo | DB Proxy: OK`);
+        addLog(`✅ Tudo OK! Apify: ${data.user} | OpenAI: Ativo | DB Proxy: OK`);
       } else {
         if (data.status !== 'ok') addLog(`❌ Erro Apify: ${data.message}`);
-        if (dataIA.status !== 'ok') addLog(`❌ Erro Gemini: ${dataIA.message}`);
+        if (dataIA.status !== 'ok') addLog(`❌ Erro OpenAI: ${dataIA.message}`);
         if (dataDB.status !== 'ok' && dataDB.status !== 'success') addLog(`❌ Erro DB Proxy: ${dataDB.message || 'Falha no proxy'}`);
       }
     } catch (e) {

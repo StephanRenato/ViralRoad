@@ -2,7 +2,7 @@ import { AnalysisResult } from "../types";
 
 const SYSTEM_PROMPT = `Você é o VIRAL ROAD, estrategista de elite. Responda em PT-BR.`;
 
-async function callGeminiHybrid(model: string, prompt: string, config: any) {
+async function callAIProxy(model: string, prompt: string, config: any) {
   try {
     const response = await fetch('/api/ia-proxy', {
       method: 'POST',
@@ -36,7 +36,7 @@ export async function generateNarratives(params: any) {
 
     Responda em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+  return await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -57,7 +57,7 @@ export async function generateHeadlines(params: any) {
 
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+  return await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -83,7 +83,7 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+  return await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -121,7 +121,7 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         7. NÃO deixe nenhum campo vazio ou em inglês.
     `;
 
-    return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+    return await callAIProxy("gpt-4o", prompt, {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
@@ -169,7 +169,7 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
 
 export async function auditUserProfile(params: any) {
   const prompt = `Auditoria: ${params.name}.`;
-  return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+  return await callAIProxy("gpt-4o", prompt, {
     responseMimeType: "application/json",
     responseSchema: {
       type: "OBJECT",
@@ -185,7 +185,7 @@ export async function auditUserProfile(params: any) {
 
 export async function generateHookSeedIdeas(params: any) {
     const prompt = `Temas virais para ${params.profileType}.`;
-    return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+    return await callAIProxy("gpt-4o", prompt, {
         responseMimeType: "application/json",
         responseSchema: { type: "OBJECT", properties: { topics: { type: "ARRAY", items: { type: "STRING" } } } }
     });
@@ -193,7 +193,7 @@ export async function generateHookSeedIdeas(params: any) {
 
 export async function generateHooksFromTopic(params: any) {
     const prompt = `Ganchos para: ${params.topic}.`;
-    return await callGeminiHybrid("gemini-3-flash-preview", prompt, {
+    return await callAIProxy("gpt-4o", prompt, {
         responseMimeType: "application/json",
         responseSchema: {
             type: "OBJECT",
