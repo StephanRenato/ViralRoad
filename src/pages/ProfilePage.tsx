@@ -92,7 +92,7 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
     const fetchWithRetry = async (url: string, options: any, retries = 3, delay = 1000) => {
       for (let i = 0; i < retries; i++) {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per attempt
+        const timeoutId = setTimeout(() => controller.abort(), 45000); // Increased to 45s to allow server-side retries
 
         try {
           const res = await fetch(url, { ...options, signal: controller.signal });
@@ -124,12 +124,14 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
       // 1. Tenta o salvamento via Proxy do Servidor (Recomendado)
       console.log("Tentando salvamento via Proxy DB...");
       try {
+        const { data: { session } } = await supabase.auth.getSession();
         const response = await fetchWithRetry('/api/db/upsert-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId: user.id,
-            profileData: fullPayload
+            profileData: fullPayload,
+            accessToken: session?.access_token
           })
         });
 
@@ -137,6 +139,10 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
           const resData = await response.json();
           dbSaved = true;
           console.log("✅ Salvo via Proxy DB:", resData);
+          
+          if (resData.recovered && resData.removedColumns?.includes('avatar_url (Safe Mode)')) {
+            setSuccessMsg('Perfil Salvo (Modo de Segurança: Foto ignorada devido ao tamanho)');
+          }
         } else {
           const errorData = await response?.json().catch(() => ({ message: 'Erro desconhecido no proxy' }));
           lastError = errorData.message || "Erro no Proxy DB";
@@ -151,16 +157,37 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
       if (!dbSaved) {
         console.log("Tentando salvamento direto no Supabase...");
         try {
-          const { error: directError } = await supabase
-            .from('profiles')
-            .upsert({ ...fullPayload, id: user.id }, { onConflict: 'id' });
+          const performDirectUpsert = async (payload: any, attempt = 1): Promise<any> => {
+            const { error: directError } = await supabase
+              .from('profiles')
+              .upsert({ ...payload, id: user.id }, { onConflict: 'id' });
+            
+            if (!directError) return { success: true };
 
-          if (!directError) {
+            // Handle column errors locally too
+            const isColumnError = directError.code === 'PGRST204' || directError.code === '42703' || directError.message?.includes("column");
+            if (isColumnError && attempt < 5) {
+               const missingColumnMatch = directError.message.match(/column "([^"]+)"/) || directError.message.match(/column '([^']+)'/);
+               const missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
+               
+               if (missingColumn && payload[missingColumn] !== undefined) {
+                  console.log(`Removing column '${missingColumn}' locally and retrying...`);
+                  const nextPayload = { ...payload };
+                  delete nextPayload[missingColumn];
+                  return performDirectUpsert(nextPayload, attempt + 1);
+               }
+            }
+            return { success: false, error: directError };
+          };
+
+          const result = await performDirectUpsert(fullPayload);
+
+          if (result.success) {
             dbSaved = true;
             console.log("✅ Salvo via Supabase Direto");
           } else {
-            lastError = directError.message;
-            console.warn("⚠️ Supabase Direto falhou:", directError);
+            lastError = result.error.message;
+            console.warn("⚠️ Supabase Direto falhou:", result.error);
           }
         } catch (directExc: any) {
           lastError = directExc.message;

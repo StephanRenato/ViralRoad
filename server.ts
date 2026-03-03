@@ -211,13 +211,23 @@ async function startServer() {
   });
 
   app.post("/api/db/upsert-profile", async (req, res) => {
-    const { userId, profileData } = req.body;
+    const { userId, profileData, accessToken } = req.body;
     console.log(`${new Date().toISOString()} | DB Upsert Request for ${userId}`);
     
     if (!userId) return res.status(400).json({ error: "Missing userId" });
     if (!profileData) return res.status(400).json({ error: "Missing profileData" });
 
     try {
+      // Use the provided access token if SERVICE_ROLE_KEY is missing or invalid
+      let client = supabaseServer;
+      if (accessToken && (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY)) {
+        console.log("Using user access token for proxy upsert (Service Role Key missing)");
+        client = createClient(SUPABASE_URL, ANON_KEY, {
+          global: { headers: { Authorization: `Bearer ${accessToken}` } },
+          auth: { persistSession: false }
+        });
+      }
+
       // Ensure the ID is set correctly in the payload
       const payload: any = { 
         ...profileData,
@@ -225,74 +235,115 @@ async function startServer() {
         updated_at: new Date().toISOString()
       };
 
-      // Recursive recovery for missing columns (PGRST204 or 42703)
+      // Recursive recovery for missing columns (PGRST204 or 42703) or 5xx errors
       const performUpsertWithRecovery = async (currentPayload: any, attempt = 1): Promise<{ data: any, error: any, removedColumns: string[] }> => {
         const removedColumns: string[] = [];
         
         console.log(`[Upsert Attempt ${attempt}] Payload keys:`, Object.keys(currentPayload));
         
-        const { data, error } = await supabaseServer
-          .from('profiles')
-          .upsert(currentPayload, { onConflict: 'id' })
-          .select();
+        try {
+          const { data, error } = await client
+            .from('profiles')
+            .upsert(currentPayload, { onConflict: 'id' })
+            .select();
 
-        // PGRST204 is PostgREST "Column not found", 42703 is Postgres "Column does not exist"
-        // Also check for general "schema cache" errors which often mean missing columns
-        const isColumnError = error && (
-          error.code === 'PGRST204' || 
-          error.code === '42703' || 
-          error.message?.includes("column") || 
-          error.message?.includes("schema cache")
-        );
+          // PGRST204 is PostgREST "Column not found", 42703 is Postgres "Column does not exist"
+          // Also check for general "schema cache" errors which often mean missing columns
+          const isColumnError = error && (
+            error.code === 'PGRST204' || 
+            error.code === '42703' || 
+            error.message?.includes("column") || 
+            error.message?.includes("schema cache")
+          );
 
-        if (isColumnError && attempt < 10) {
-          console.warn(`[Attempt ${attempt}] Column error detected: ${error.code} - ${error.message}`);
-          
-          const missingColumnMatch = error.message.match(/column "([^"]+)"/) || 
-                                   error.message.match(/column '([^']+)'/) || 
-                                   error.message.match(/'([^']+)' column/) ||
-                                   error.message.match(/"([^"]+)" column/);
-          
-          let missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
-          
-          // Fallback for common columns if regex fails but message contains them
-          if (!missingColumn) {
-            const commonColumns = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url', 'name'];
-            for (const col of commonColumns) {
-              if (error.message.includes(`'${col}'`) || error.message.includes(`"${col}"`) || error.message.includes(` ${col} `)) {
-                missingColumn = col;
-                break;
+          // Detect 520 or 5xx errors (often returned as HTML in the message)
+          const err = error as any;
+          const isServerError = err && (
+            err.status === 520 || 
+            err.status >= 500 || 
+            err.message?.includes("520") || 
+            err.message?.includes("Cloudflare") ||
+            err.message?.includes("<title>")
+          );
+
+          if (isColumnError && attempt < 10) {
+            console.warn(`[Attempt ${attempt}] Column error detected: ${error.code} - ${error.message}`);
+            
+            const missingColumnMatch = error.message.match(/column "([^"]+)"/) || 
+                                     error.message.match(/column '([^']+)'/) || 
+                                     error.message.match(/'([^']+)' column/) ||
+                                     error.message.match(/"([^"]+)" column/);
+            
+            let missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
+            
+            // Fallback for common columns if regex fails but message contains them
+            if (!missingColumn) {
+              const commonColumns = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url', 'name'];
+              for (const col of commonColumns) {
+                if (error.message.includes(`'${col}'`) || error.message.includes(`"${col}"`) || error.message.includes(` ${col} `)) {
+                  missingColumn = col;
+                  break;
+                }
+              }
+            }
+
+            if (missingColumn && currentPayload[missingColumn] !== undefined) {
+              console.log(`Removing problematic column '${missingColumn}' and retrying upsert...`);
+              const nextPayload = { ...currentPayload };
+              delete nextPayload[missingColumn];
+              const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+              return {
+                ...result,
+                removedColumns: [missingColumn, ...result.removedColumns]
+              };
+            } else {
+              // If we can't identify the column but it's a column error, try removing non-essential ones one by one
+              const nonEssential = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url'];
+              for (const col of nonEssential) {
+                if (currentPayload[col] !== undefined) {
+                  console.log(`Unidentified column error. Trying to remove '${col}' as a guess...`);
+                  const nextPayload = { ...currentPayload };
+                  delete nextPayload[col];
+                  const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+                  return {
+                    ...result,
+                    removedColumns: [col, ...result.removedColumns]
+                  };
+                }
               }
             }
           }
 
-          if (missingColumn && currentPayload[missingColumn] !== undefined) {
-            console.log(`Removing problematic column '${missingColumn}' and retrying upsert...`);
-            const nextPayload = { ...currentPayload };
-            delete nextPayload[missingColumn];
-            const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
-            return {
-              ...result,
-              removedColumns: [missingColumn, ...result.removedColumns]
-            };
-          } else {
-            // If we can't identify the column but it's a column error, try removing non-essential ones one by one
-            const nonEssential = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url'];
-            for (const col of nonEssential) {
-              if (currentPayload[col] !== undefined) {
-                console.log(`Unidentified column error. Trying to remove '${col}' as a guess...`);
-                const nextPayload = { ...currentPayload };
-                delete nextPayload[col];
-                const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
-                return {
-                  ...result,
-                  removedColumns: [col, ...result.removedColumns]
-                };
-              }
+          // Handle 520/5xx errors with retries and eventually stripping the image
+          if (isServerError && attempt < 5) {
+            console.warn(`[Attempt ${attempt}] Server/Cloudflare error (520/5xx) detected. Retrying...`);
+            
+            // If it's the 3rd attempt and we still have an avatar_url, try stripping it (Safe Mode)
+            if (attempt >= 2 && currentPayload.avatar_url) {
+              console.log("⚠️ Entering SAFE MODE: Stripping avatar_url to reduce payload size and bypass 520 error.");
+              const nextPayload = { ...currentPayload };
+              delete nextPayload.avatar_url;
+              const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+              return {
+                ...result,
+                removedColumns: ['avatar_url (Safe Mode)', ...result.removedColumns]
+              };
             }
+
+            // Wait a bit before retry
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            return performUpsertWithRecovery(currentPayload, attempt + 1);
           }
+
+          return { data, error, removedColumns };
+        } catch (exc: any) {
+          console.error(`[Attempt ${attempt}] Exception during upsert:`, exc);
+          if (attempt < 3) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return performUpsertWithRecovery(currentPayload, attempt + 1);
+          }
+          return { data: null, error: exc, removedColumns: [] };
         }
-        return { data, error, removedColumns };
       };
 
       const { data, error, removedColumns } = await performUpsertWithRecovery(payload);
@@ -757,7 +808,7 @@ async function startServer() {
   });
 
   // OpenAI Health Route
-  app.get("/api/gemini-health", async (req, res) => {
+  app.get("/api/openai-health", async (req, res) => {
     try {
       const apiKey = (process.env.OPENAI_API_KEY || '').trim();
       if (!apiKey || apiKey.length < 10) {
@@ -781,6 +832,23 @@ async function startServer() {
         status: "error", 
         message: error.message || "Erro desconhecido"
       });
+    }
+  });
+
+  // Apify Health Route
+  app.get("/api/apify-health", async (req, res) => {
+    try {
+      if (!APIFY_TOKEN || APIFY_TOKEN.length < 10) {
+        return res.json({ status: "error", message: "Token Apify ausente" });
+      }
+      const response = await fetch(`https://api.apify.com/v2/users/me?token=${APIFY_TOKEN}`);
+      if (response.ok) {
+        const data = await response.json();
+        return res.json({ status: "ok", user: data.data.username || data.data.email });
+      }
+      return res.json({ status: "error", message: "Token Apify inválido ou expirado" });
+    } catch (error: any) {
+      return res.json({ status: "error", message: error.message });
     }
   });
 

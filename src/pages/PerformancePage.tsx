@@ -122,7 +122,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       // PRE-CHECK: Verificar OpenAI antes de gastar créditos Apify
       if (!forceMock) {
         addLog("Validando motores de IA...");
-        const healthRes = await fetch('/api/gemini-health');
+        const healthRes = await fetch('/api/openai-health');
         const healthData = await healthRes.json();
         
         if (healthData.status !== 'ok') {
@@ -212,10 +212,15 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       // 1. Tenta salvar via Proxy do Servidor (Mais resiliente contra erros de fetch no cliente)
       try {
         addLog("Sincronizando com a nuvem...");
+        const { data: { session } } = await supabase.auth.getSession();
         const proxyDbRes = await fetch('/api/db/upsert-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: user.id, profileData: { social_profiles: updated } })
+          body: JSON.stringify({ 
+            userId: user.id, 
+            profileData: { social_profiles: updated },
+            accessToken: session?.access_token
+          })
         });
         
         if (!proxyDbRes.ok) {
