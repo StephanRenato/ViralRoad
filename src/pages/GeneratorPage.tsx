@@ -204,10 +204,19 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
     try {
       const res = await generateNarratives({ ...params });
       console.log("Narrativas geradas com sucesso:", res);
-      if (!res || !res.narratives || res.narratives.length === 0) {
+      
+      // Normalização defensiva no frontend também
+      const narrativesList = res.narratives || res.narrativas || [];
+      
+      if (!res || narrativesList.length === 0) {
         throw new Error("A IA não retornou narrativas válidas. Tente mudar o tema.");
       }
-      setNarratives(res);
+      
+      // Garante que o objeto tenha a chave correta para o estado
+      setNarratives({
+        ...res,
+        narratives: narrativesList
+      });
     } catch (e: any) {
       console.error("Erro na geração de narrativas:", e);
       setSaveError(e.message || "Falha na Engine Road. Tente novamente em instantes.");
@@ -226,7 +235,13 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
         platform: params.platform, 
         targetAudience: params.targetAudience 
       });
-      setHeadlines(res);
+      
+      // Normalização defensiva
+      const headlinesList = res.headlines || res.ganchos || res.titulos || [];
+      setHeadlines({
+        ...res,
+        headlines: headlinesList
+      });
     } catch (e: any) {
       console.error(e);
       setSaveError(e.message || "Erro ao gerar ganchos.");
@@ -242,7 +257,17 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
     setStep(4);
     try {
       const res = await generateFinalStrategy({ ...params, headline });
-      setFinalStrategy(res);
+      
+      // Normalização defensiva
+      const normalized = {
+        ...res,
+        script: res.script || res.roteiro || '',
+        caption: res.caption || res.legenda || '',
+        hashtags: res.hashtags || res.hashtags_estrategicas || '',
+        creativeDirection: res.creativeDirection || res.direcao_criativa || res.direcaoCriativa || ''
+      };
+      
+      setFinalStrategy(normalized);
     } catch (e: any) {
       console.error(e);
       setSaveError(e.message || "Erro ao gerar blueprint final.");

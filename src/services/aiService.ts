@@ -26,6 +26,58 @@ async function callAIProxy(model: string, prompt: string, config: any) {
   }
 }
 
+/**
+ * Normaliza as chaves de um objeto ou array de objetos de Português para Inglês.
+ * Útil quando a IA traduz as chaves do JSON mesmo com schema definido.
+ */
+function normalizeAIKeys(data: any): any {
+  if (!data) return data;
+
+  if (Array.isArray(data)) {
+    return data.map(item => normalizeAIKeys(item));
+  }
+
+  if (typeof data === 'object') {
+    const normalized: any = {};
+    const keyMap: Record<string, string> = {
+      // Narrativas
+      'narrativas': 'narratives',
+      'titulo': 'title',
+      'descricao': 'description',
+      'objetivo': 'objective',
+      'insight_analise': 'analysis_insight',
+      'analise_insight': 'analysis_insight',
+      
+      // Headlines / Hooks
+      'ganchos': 'headlines',
+      'manchetes': 'headlines',
+      'titulos': 'headlines',
+      
+      // Final Strategy
+      'roteiro': 'script',
+      'legenda': 'caption',
+      'direcaoCriativa': 'creativeDirection',
+      'direcao_criativa': 'creativeDirection',
+      'hashtags_estrategicas': 'hashtags'
+    };
+
+    for (const key in data) {
+      const normalizedKey = keyMap[key] || key;
+      let value = data[key];
+      
+      // Recursivamente normaliza valores se forem objetos ou arrays
+      if (typeof value === 'object' && value !== null) {
+        value = normalizeAIKeys(value);
+      }
+      
+      normalized[normalizedKey] = value;
+    }
+    return normalized;
+  }
+
+  return data;
+}
+
 export async function generateNarratives(params: any) {
   const prompt = `
     Gere 3 narrativas estratégicas para o nicho: ${params.profileType} (${params.specialization}).
@@ -34,9 +86,18 @@ export async function generateNarratives(params: any) {
     Etapa do Funil: ${params.funnel}
     Público-Alvo: ${params.targetAudience}
 
+    INSTRUÇÃO DE FORMATO:
+    Retorne um objeto JSON com as chaves EXATAMENTE assim:
+    {
+      "analysis_insight": "string",
+      "narratives": [
+        { "title": "string", "description": "string" }
+      ]
+    }
+
     Responda em Português do Brasil (PT-BR).
   `;
-  return await callAIProxy("gpt-4o", prompt, {
+  const res = await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -47,6 +108,7 @@ export async function generateNarratives(params: any) {
       }
     }
   });
+  return normalizeAIKeys(res);
 }
 
 export async function generateHeadlines(params: any) {
@@ -55,9 +117,15 @@ export async function generateHeadlines(params: any) {
     Plataforma: ${params.platform}
     Público: ${params.targetAudience}
 
+    INSTRUÇÃO DE FORMATO:
+    Retorne um objeto JSON com a chave EXATAMENTE assim:
+    {
+      "headlines": ["gancho 1", "gancho 2", ...]
+    }
+
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  return await callAIProxy("gpt-4o", prompt, {
+  const res = await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -65,6 +133,7 @@ export async function generateHeadlines(params: any) {
       properties: { headlines: { type: "ARRAY", items: { type: "STRING" } } }
     }
   });
+  return normalizeAIKeys(res);
 }
 
 export async function generateFinalStrategy(params: any) {
@@ -75,6 +144,15 @@ export async function generateFinalStrategy(params: any) {
     Formato: ${params.format}
     Modo de Comunicação: ${params.communicationMode}
 
+    INSTRUÇÃO DE FORMATO:
+    Retorne um objeto JSON com as chaves EXATAMENTE assim:
+    {
+      "script": "string",
+      "caption": "string",
+      "hashtags": "string",
+      "creativeDirection": "string"
+    }
+
     Inclua:
     1. Roteiro Detalhado (Script)
     2. Legenda Otimizada (Caption)
@@ -83,7 +161,7 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  return await callAIProxy("gpt-4o", prompt, {
+  const res = await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -96,6 +174,7 @@ export async function generateFinalStrategy(params: any) {
       }
     }
   });
+  return normalizeAIKeys(res);
 }
 
 export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult> {
