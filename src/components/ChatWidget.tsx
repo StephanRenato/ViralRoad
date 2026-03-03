@@ -9,7 +9,7 @@ const getApiKey = () => {
   if (envKey && envKey !== 'GEMINI_KEY_MISSING' && envKey !== 'undefined') {
     return envKey;
   }
-  return 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw';
+  return '';
 };
 
 interface Message {

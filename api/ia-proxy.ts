@@ -25,10 +25,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     let apiKey = (process.env.GEMINI_API_KEY || '').trim();
-    const fallbackKey = 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw';
     
     if (!apiKey || apiKey === 'undefined' || apiKey === 'GEMINI_KEY_MISSING' || apiKey.length < 10) {
-       apiKey = fallbackKey;
+       return res.status(401).json({ error: "MISSING_API_KEY", message: "A chave da API Gemini não foi configurada." });
     }
 
     console.log(`Using Gemini API Key: ${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`);

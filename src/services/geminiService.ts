@@ -8,7 +8,7 @@ const getApiKey = () => {
   if (envKey && envKey !== 'GEMINI_KEY_MISSING' && envKey !== 'undefined') {
     return envKey;
   }
-  return 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw'; // Fallback key
+  return ''; // No fallback for security
 };
 
 async function callGeminiHybrid(model: string, prompt: string, config: any) {
