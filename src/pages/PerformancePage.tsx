@@ -219,29 +219,41 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         });
         
         if (!proxyDbRes.ok) {
-          throw new Error("Proxy de banco falhou");
+          const proxyError = await proxyDbRes.json().catch(() => ({ message: "Erro desconhecido no proxy" }));
+          throw new Error(proxyError.message || "Proxy de banco falhou");
         }
         addLog("Sincronização: OK");
-      } catch (proxyErr) {
+      } catch (proxyErr: any) {
         console.warn("Falha no proxy de banco, tentando Supabase direto...", proxyErr);
+        addLog(`Aviso: Sincronização via proxy falhou (${proxyErr.message}). Tentando conexão direta...`);
         
         // Fallback: Tenta salvar no banco de dados direto (Cliente)
-        const { error: dbError } = await supabase.from('profiles').upsert({ 
-          id: user.id,
-          social_profiles: updated
-        }, { onConflict: 'id' });
-        
-        if (dbError) {
-          console.warn("Falha ao salvar performance no banco direto, usando metadata...", dbError);
+        try {
+          const { error: dbError } = await supabase.from('profiles').upsert({ 
+            id: user.id,
+            social_profiles: updated,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'id' });
+          
+          if (dbError) throw dbError;
+          addLog("Sincronização Direta: OK");
+        } catch (dbError: any) {
+          console.error("Falha ao salvar performance no banco direto:", dbError);
+          addLog(`Erro Crítico: Falha ao salvar no banco (${dbError.message}). Usando backup local.`);
+          
           // Fallback local imediato para persistência na sessão atual
           localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(updated));
           
-          // 2. Fallback para Metadata do Auth
-          const { error: authError } = await supabase.auth.updateUser({
-            data: { social_profiles: updated }
-          });
-          if (authError) {
+          // 2. Fallback para Metadata do Auth (Última tentativa de nuvem)
+          try {
+            const { error: authError } = await supabase.auth.updateUser({
+              data: { social_profiles: updated }
+            });
+            if (authError) throw authError;
+            addLog("Backup em Metadata: OK");
+          } catch (authError: any) {
              console.error("Falha crítica ao salvar em metadata:", authError);
+             addLog("Erro: Não foi possível salvar em nenhuma camada de nuvem.");
           }
         }
       }
@@ -301,8 +313,12 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       const data = await res.json();
       
       addLog("Iniciando diagnóstico de conexão OpenAI (IA)...");
-      const resIA = await fetch('/api/gemini-health');
+      const resIA = await fetch('/api/openai-health');
       const dataIA = await resIA.json();
+
+      addLog("Iniciando diagnóstico de conexão Supabase...");
+      const resSupa = await fetch('/api/supabase-health');
+      const dataSupa = await resSupa.json();
 
       addLog("Testando Proxy de Banco de Dados...");
       const resDB = await fetch('/api/db/upsert-profile', {
@@ -312,13 +328,14 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       });
       const dataDB = await resDB.json();
 
-      setDiagnosticStatus({ apify: data, gemini: dataIA, dbProxy: dataDB });
+      setDiagnosticStatus({ apify: data, openai: dataIA, supabase: dataSupa, dbProxy: dataDB });
 
-      if (data.status === 'ok' && dataIA.status === 'ok' && (dataDB.status === 'ok' || dataDB.status === 'success')) {
-        addLog(`✅ Tudo OK! Apify: ${data.user} | OpenAI: Ativo | DB Proxy: OK`);
+      if (data.status === 'ok' && dataIA.status === 'ok' && dataSupa.status === 'ok' && (dataDB.status === 'ok' || dataDB.status === 'success')) {
+        addLog(`✅ Tudo OK! Apify: ${data.user} | OpenAI: Ativo | Supabase: Conectado | DB Proxy: OK`);
       } else {
         if (data.status !== 'ok') addLog(`❌ Erro Apify: ${data.message}`);
         if (dataIA.status !== 'ok') addLog(`❌ Erro OpenAI: ${dataIA.message}`);
+        if (dataSupa.status !== 'ok') addLog(`❌ Erro Supabase: ${dataSupa.message}`);
         if (dataDB.status !== 'ok' && dataDB.status !== 'success') addLog(`❌ Erro DB Proxy: ${dataDB.message || 'Falha no proxy'}`);
       }
     } catch (e) {
@@ -398,11 +415,11 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                       </div>
                     )}
                     {diagnosticStatus && (
-                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${(!diagnosticStatus.apify || diagnosticStatus.apify.status === 'ok') && (!diagnosticStatus.gemini || diagnosticStatus.gemini.status === 'ok') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${(!diagnosticStatus.apify || diagnosticStatus.apify.status === 'ok') && (!diagnosticStatus.openai || diagnosticStatus.openai.status === 'ok') && (!diagnosticStatus.supabase || diagnosticStatus.supabase.status === 'ok') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                         <div className="font-black uppercase mb-1">Resultado do Diagnóstico:</div>
                         <pre className="whitespace-pre-wrap mb-3">{JSON.stringify(diagnosticStatus, null, 2)}</pre>
                         
-                        {(diagnosticStatus.canUseMock || (diagnosticStatus.gemini && diagnosticStatus.gemini.status !== 'ok')) && (
+                        {(diagnosticStatus.canUseMock || (diagnosticStatus.openai && diagnosticStatus.openai.status !== 'ok') || (diagnosticStatus.supabase && diagnosticStatus.supabase.status !== 'ok')) && (
                           <button 
                             onClick={() => handleConnect(newUrl, true)}
                             className="w-full py-2 bg-zinc-800 text-white rounded-xl font-black uppercase tracking-widest hover:bg-zinc-700 transition-all mt-2"

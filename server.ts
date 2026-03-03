@@ -71,6 +71,29 @@ async function startServer() {
     res.send("pong");
   });
 
+  // Supabase Health Check
+  app.get("/api/supabase-health", async (req, res) => {
+    try {
+      const { data, error } = await supabaseServer.from('profiles').select('count', { count: 'exact', head: true });
+      
+      return res.json({ 
+        status: error ? 'error' : 'ok', 
+        message: error ? error.message : 'Conexão com Supabase estável',
+        details: error || null,
+        config: {
+          url: SUPABASE_URL.substring(0, 15) + '...',
+          hasServiceKey: !!SERVICE_ROLE_KEY,
+          hasAnonKey: !!ANON_KEY
+        }
+      });
+    } catch (error: any) {
+      return res.status(500).json({ 
+        status: 'error', 
+        message: error.message || 'Falha catastrófica ao contatar Supabase' 
+      });
+    }
+  });
+
   // DB Proxy Route (More resilient than client-side fetch)
   app.get("/api/db/profile", async (req, res) => {
     const { userId } = req.query;
@@ -120,15 +143,19 @@ async function startServer() {
         .select();
       
       if (error) {
-        console.error("Supabase Upsert Error Detail:", JSON.stringify(error, null, 2));
-        throw error;
+        console.error("Supabase Upsert Error Detail:", error);
+        return res.status(400).json({ 
+          error: "SUPABASE_UPSERT_ERROR", 
+          message: error.message,
+          details: error 
+        });
       }
       return res.json({ status: "ok", data });
     } catch (error: any) {
-      console.error("DB Proxy Error:", error);
+      console.error("DB Proxy Exception:", error);
       return res.status(500).json({ 
-        error: "DB_PROXY_ERROR", 
-        message: error.message || "Erro ao salvar no banco via proxy." 
+        error: "DB_PROXY_EXCEPTION", 
+        message: error.message || "Erro interno ao processar upsert via proxy." 
       });
     }
   });
@@ -184,11 +211,14 @@ async function startServer() {
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase Get Hooks Error:", error);
+        return res.status(400).json({ error: "SUPABASE_ERROR", message: error.message });
+      }
       return res.json({ status: "ok", data });
     } catch (error: any) {
-      console.error("DB Get Hooks Error:", error);
-      return res.status(500).json({ error: "DB_GET_HOOKS_ERROR", message: error.message });
+      console.error("DB Get Hooks Proxy Exception:", error);
+      return res.status(500).json({ error: "DB_GET_HOOKS_EXCEPTION", message: error.message });
     }
   });
 

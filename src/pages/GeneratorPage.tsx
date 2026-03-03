@@ -283,8 +283,22 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
     setSaveError(null);
 
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) throw new Error("Sessão expirada. Faça login novamente.");
+      const { data: { session } } = await supabase.auth.getSession();
+      const authUser = session?.user;
+      
+      if (!authUser) {
+        // Tenta um último recurso: verifica se há algo no localStorage
+        const sessionStr = localStorage.getItem('viral-road-auth-token');
+        if (!sessionStr) throw new Error("Sessão expirada. Faça login novamente.");
+        
+        // Se houver algo no localStorage mas o SDK não pegou, pode ser um delay de inicialização
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const { data: { user: retryUser } } = await supabase.auth.getUser();
+        if (!retryUser) throw new Error("Sessão expirada. Faça login novamente.");
+      }
+
+      const userToUse = authUser || (await supabase.auth.getUser()).data.user;
+      if (!userToUse) throw new Error("Sessão expirada. Faça login novamente.");
 
       // 1. Tenta salvar via Proxy (mais resiliente)
       try {
@@ -305,7 +319,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
         const response = await fetch('/api/db/blueprints', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId: authUser.id, payload })
+          body: JSON.stringify({ userId: userToUse.id, payload })
         });
 
         if (!response.ok) {
@@ -317,12 +331,12 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
         
         // Fallback direto
         if (!isUnlimited) {
-          const { data: canGenerate } = await supabase.rpc("can_user_generate_blueprint", { p_user_id: authUser.id });
+          const { data: canGenerate } = await supabase.rpc("can_user_generate_blueprint", { p_user_id: userToUse.id });
           if (canGenerate === false) throw new Error("Limite atingido. Faça upgrade para continuar.");
         }
 
         const { error: insertError } = await supabase.from("content_blueprints").insert({
-          user_id: authUser.id,
+          user_id: userToUse.id,
           title: String(selectedHeadline || "Estratégia Viral Road"),
           blueprint_type: 'road',
           script: String(finalStrategy.script || ''),
@@ -346,7 +360,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
           await fetch('/api/db/usage/increment', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: authUser.id })
+            body: JSON.stringify({ userId: userToUse.id })
           });
         } catch (usageErr) {
           console.warn("Falha ao incrementar uso via proxy, tentando direto:", usageErr);
@@ -354,7 +368,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
           const { data: usageData } = await supabase
             .from('usage_limits')
             .select('used_this_month')
-            .eq('user_id', authUser.id)
+            .eq('user_id', userToUse.id)
             .single();
           
           const newUsedCount = (usageData?.used_this_month || 0) + 1;
@@ -362,9 +376,9 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
           await supabase
             .from('usage_limits')
             .upsert({ 
-              user_id: authUser.id, 
+              user_id: userToUse.id, 
               used_this_month: newUsedCount
-            }, { onConflict: 'id' });
+            }, { onConflict: 'user_id' });
         }
       }
 
