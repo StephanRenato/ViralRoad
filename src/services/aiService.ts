@@ -194,17 +194,17 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
 
         INSTRUÇÕES PARA O RELATÓRIO (RESPONDA EM PT-BR):
         1. viral_score: Um número de 0 a 100 baseado no potencial de viralização atual.
-        2. best_format: Identifique o formato vencedor (ex: "Reels de Curiosidade", "Carrosséis Educativos", "Shorts de Lifestyle").
-        3. frequency_suggestion: Plano prático de postagem (ex: "1 Reel diário + 5 Stories estratégicos").
-        4. content_pillars: Lista de 3 a 4 temas que o perfil DEVE dominar.
-        5. diagnostic.status_label: Uma frase curta de status (ex: "PERFIL COM ALTO POTENCIAL", "NECESSITA AJUSTE DE RITMO").
-        6. diagnostic.key_action_item: A ação #1 que o usuário deve fazer HOJE para mudar o jogo.
-        7. diagnostic.tone_audit: Analise o tom de voz. Ele é autoritário? Amigável? Precisa ser mais magnético?
-        8. diagnostic.content_strategy_advice: A Linha Editorial completa. Como ele deve se posicionar? Qual a narrativa mestre?
-        9. diagnostic.visual_style: Estética visual e estilo de fotos/vídeos recomendados (ex: "Cores quentes, cortes rápidos, fotos em ambiente externo").
-        10. next_post_recommendation: Uma ideia real de postagem para ele fazer agora.
+        2. best_format: Identifique o formato vencedor ESPECÍFICO (ex: "Reels de Curiosidade com Cortes Rápidos", "Carrosséis de Tutorial Passo-a-Passo"). NÃO use termos genéricos.
+        3. frequency_suggestion: Plano prático e detalhado (ex: "1 Reel diário focado em topo de funil + 3 Stories de interação").
+        4. content_pillars: Lista de 3 a 4 temas estratégicos (ex: "Bastidores da Produção", "Dicas Rápidas de [Nicho]", "Quebra de Objeções").
+        5. diagnostic.status_label: Uma frase curta e impactante de status.
+        6. diagnostic.key_action_item: A ação #1 TÁTICA que o usuário deve fazer HOJE (ex: "Grave um vídeo de 15s respondendo a dúvida X", "Mude sua Bio para focar no benefício Y").
+        7. diagnostic.tone_audit: Auditoria profunda do tom de voz atual vs ideal.
+        8. diagnostic.content_strategy_advice: Linha Editorial e narrativa mestre. Como se diferenciar da concorrência?
+        9. diagnostic.visual_style: Estética visual, paleta de cores sugerida e estilo de fotografia/vídeo.
+        10. next_post_recommendation: Uma ideia real, pronta para gravar, incluindo gancho e objetivo.
 
-        IMPORTANTE: Não use placeholders. Seja específico para o nicho "${params.niche}".
+        IMPORTANTE: Você é um consultor de R$ 10.000/hora. Seja extremamente específico, tático e direto. Não use placeholders. Use os dados reais fornecidos para embasar sua estratégia.
     `;
 
     return await callAIProxy("gpt-4o", prompt, {

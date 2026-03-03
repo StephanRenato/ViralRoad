@@ -189,22 +189,32 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       setProgress(100);
       addLog(`Relatório gerado com sucesso.`);
 
-      const analysisRaw = aiRes.results?.[0]?.analysis || {};
+      const analysisRaw = (aiRes.results && aiRes.results.length > 0) ? aiRes.results[0].analysis : {};
+      
+      // Merge AI results with local metrics and audit results
+      const mergedAnalysisAi = {
+        ...analysisRaw,
+        viral_score: analysisRaw.viral_score || score.score,
+        diagnostic: { 
+          ...(analysisRaw.diagnostic || {}), 
+          status_label: analysisRaw.diagnostic?.status_label || score.insight,
+          // Ensure these fields are present even if AI missed them
+          key_action_item: analysisRaw.diagnostic?.key_action_item || "Aguardando diagnóstico neural...",
+          tone_audit: analysisRaw.diagnostic?.tone_audit || "Analisando tom de voz...",
+          content_strategy_advice: analysisRaw.diagnostic?.content_strategy_advice || "Construindo linha editorial...",
+          visual_style: analysisRaw.diagnostic?.visual_style || "Definindo estética visual..."
+        },
+        market_fit: auditRes || analysisRaw.market_fit,
+        content_pillars: analysisRaw.content_pillars || []
+      };
+
       const newProfile: SocialProfile = {
         platform: activePlatform,
         url: urlToUse,
         username: normalized.username,
         objective,
         normalized_metrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
-        analysis_ai: {
-          ...analysisRaw,
-          viral_score: analysisRaw.viral_score || score.score,
-          diagnostic: { 
-            ...(analysisRaw.diagnostic || {}), 
-            status_label: analysisRaw.diagnostic?.status_label || score.insight 
-          },
-          market_fit: auditRes
-        },
+        analysis_ai: mergedAnalysisAi,
         raw_apify_data: rawResponse,
         recent_posts: postsData,
         last_sync: new Date().toISOString()
@@ -358,7 +368,14 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const marketFit = analysis?.market_fit || auditResult;
 
   const [showAllPosts, setShowAllPosts] = useState(false);
-  const displayedPosts = currentProfile?.recent_posts ? (showAllPosts ? currentProfile.recent_posts : currentProfile.recent_posts.slice(0, 5)) : [];
+  const displayedPosts = currentProfile?.recent_posts ? (showAllPosts ? currentProfile.recent_posts : currentProfile.recent_posts.slice(0, 10)) : [];
+
+  const getInstagramUrl = (post: any) => {
+    if (post.url && post.url.includes('instagram.com')) return post.url;
+    if (post.shortCode) return `https://www.instagram.com/p/${post.shortCode}/`;
+    if (post.id && !post.id.includes('_')) return `https://www.instagram.com/p/${post.id}/`;
+    return '#';
+  };
 
   return (
     <div className="p-4 md:p-10 space-y-10 animate-in fade-in duration-500 pb-32 max-w-7xl mx-auto">
@@ -588,7 +605,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                               {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : 'N/A'}
                             </span>
                             <a 
-                              href={post.url || (post.shortCode ? `https://www.instagram.com/p/${post.shortCode}/` : '#')} 
+                              href={getInstagramUrl(post)} 
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="text-yellow-500 hover:text-yellow-400 p-1 hover:bg-yellow-400/10 rounded-lg transition-colors"

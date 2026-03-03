@@ -314,24 +314,57 @@ async function startServer() {
             }
           }
 
-          // Handle 520/5xx errors with retries and eventually stripping the image
-          if (isServerError && attempt < 5) {
+          // Handle 520/5xx errors with retries and eventually stripping heavy data
+          if (isServerError && attempt < 7) {
             console.warn(`[Attempt ${attempt}] Server/Cloudflare error (520/5xx) detected. Retrying...`);
             
-            // If it's the 3rd attempt and we still have an avatar_url, try stripping it (Safe Mode)
-            if (attempt >= 2 && currentPayload.avatar_url) {
-              console.log("⚠️ Entering SAFE MODE: Stripping avatar_url to reduce payload size and bypass 520 error.");
-              const nextPayload = { ...currentPayload };
+            let nextPayload = { ...currentPayload };
+            let strippedSomething = false;
+            let strippedLabel = "";
+
+            // Attempt 2: Strip avatar_url
+            if (attempt === 2 && nextPayload.avatar_url) {
               delete nextPayload.avatar_url;
+              strippedSomething = true;
+              strippedLabel = "avatar_url";
+            } 
+            // Attempt 3: Strip raw_apify_data from social_profiles (Heaviest part)
+            else if (attempt === 3 && nextPayload.social_profiles) {
+              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
+                const { raw_apify_data, ...rest } = p;
+                return rest;
+              });
+              strippedSomething = true;
+              strippedLabel = "raw_apify_data";
+            }
+            // Attempt 4: Strip recent_posts from social_profiles
+            else if (attempt === 4 && nextPayload.social_profiles) {
+              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
+                const { recent_posts, ...rest } = p;
+                return rest;
+              });
+              strippedSomething = true;
+              strippedLabel = "recent_posts";
+            }
+            // Attempt 5: Strip settings
+            else if (attempt === 5 && nextPayload.settings) {
+              delete nextPayload.settings;
+              strippedSomething = true;
+              strippedLabel = "settings";
+            }
+
+            if (strippedSomething) {
+              console.log(`⚠️ Entering SAFE MODE (Attempt ${attempt}): Stripping ${strippedLabel} to reduce payload size and bypass 520 error.`);
               const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
               return {
                 ...result,
-                removedColumns: ['avatar_url (Safe Mode)', ...result.removedColumns]
+                removedColumns: [`${strippedLabel} (Safe Mode)`, ...result.removedColumns]
               };
             }
 
-            // Wait a bit before retry
-            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            // Wait a bit before retry (exponential backoff)
+            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+            await new Promise(resolve => setTimeout(resolve, delay));
             return performUpsertWithRecovery(currentPayload, attempt + 1);
           }
 
