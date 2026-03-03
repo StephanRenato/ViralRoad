@@ -154,6 +154,12 @@ export interface AnalysisAi {
     topic: string;
     reason: string;
   };
+  market_fit?: {
+    score: number;
+    market_status: string;
+    verdict: string;
+    tip: string;
+  };
   tactics?: string[];
 }
 

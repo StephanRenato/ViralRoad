@@ -176,7 +176,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         specialization: user.specialization,
         realMetrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
         objective,
-        recentPosts: "Análise de perfil em tempo real."
+        recentPosts: postsData.map(p => p.caption).join(' | ').slice(0, 1000)
       });
 
       const auditRes = await auditUserProfile({
@@ -199,7 +199,8 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         analysis_ai: {
           ...analysisRaw,
           viral_score: analysisRaw.viral_score || score.score,
-          diagnostic: { ...analysisRaw.diagnostic, status_label: score.insight }
+          diagnostic: { ...analysisRaw.diagnostic, status_label: score.insight },
+          market_fit: auditRes
         },
         raw_apify_data: rawResponse,
         recent_posts: postsData,
@@ -351,6 +352,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const currentProfile = localProfiles.find(p => p.platform === activePlatform);
   const analysis = currentProfile?.analysis_ai;
   const stats = currentProfile?.normalized_metrics;
+  const marketFit = analysis?.market_fit || auditResult;
+
+  const [showAllPosts, setShowAllPosts] = useState(false);
+  const displayedPosts = currentProfile?.recent_posts ? (showAllPosts ? currentProfile.recent_posts : currentProfile.recent_posts.slice(0, 5)) : [];
 
   return (
     <div className="p-4 md:p-10 space-y-10 animate-in fade-in duration-500 pb-32 max-w-7xl mx-auto">
@@ -516,21 +521,32 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
              {currentProfile?.recent_posts && currentProfile.recent_posts.length > 0 && (
                <div className="space-y-6">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Layers size={18} /></div>
-                    <h4 className="text-sm font-black uppercase italic tracking-widest">Análise de Conteúdo Recente</h4>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Layers size={18} /></div>
+                      <h4 className="text-sm font-black uppercase italic tracking-widest">Análise de Conteúdo Recente</h4>
+                    </div>
+                    {currentProfile.recent_posts.length > 5 && (
+                      <button 
+                        onClick={() => setShowAllPosts(!showAllPosts)}
+                        className="text-[10px] font-black uppercase tracking-widest text-yellow-500 hover:text-yellow-400 flex items-center gap-1"
+                      >
+                        {showAllPosts ? "Ver Menos" : `Ver Todos (${currentProfile.recent_posts.length})`} <ChevronDown size={14} className={showAllPosts ? "rotate-180 transition-transform" : "transition-transform"} />
+                      </button>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-                    {currentProfile.recent_posts.slice(0, 5).map((post: any, idx: number) => (
+                    {displayedPosts.map((post: any, idx: number) => (
                       <div key={idx} className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-3xl overflow-hidden shadow-lg group hover:border-yellow-400 transition-all">
                         <div className="aspect-square relative overflow-hidden bg-zinc-100 dark:bg-zinc-800">
                           <img 
-                            src={post.displayUrl || post.thumbnailUrl || `https://picsum.photos/seed/${idx}/400/400`} 
+                            src={post.displayUrl || post.thumbnailUrl || `https://picsum.photos/seed/post-${idx}-${currentProfile.username}/400/400`} 
                             alt="Post" 
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                             referrerPolicy="no-referrer"
                             onError={(e) => {
-                              e.currentTarget.src = `https://picsum.photos/seed/post-${idx}/400/400`;
+                              // If the original URL fails, try to use a placeholder that looks like a social post
+                              e.currentTarget.src = `https://picsum.photos/seed/post-${idx}-${currentProfile.username}/400/400`;
                               e.currentTarget.onerror = null;
                             }}
                           />
@@ -549,9 +565,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                               href={post.url || (post.shortCode ? `https://www.instagram.com/p/${post.shortCode}/` : '#')} 
                               target="_blank" 
                               rel="noopener noreferrer" 
-                              className="text-yellow-500 hover:text-yellow-400"
+                              className="text-yellow-500 hover:text-yellow-400 p-1 hover:bg-yellow-400/10 rounded-lg transition-colors"
+                              title="Ver no Instagram"
                             >
-                              <ExternalLink size={12} />
+                              <ExternalLink size={14} />
                             </a>
                           </div>
                         </div>
@@ -559,14 +576,14 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                     ))}
                   </div>
                </div>
-             )}
+              )}
 
              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {auditResult && (
+                {marketFit && (
                   <div className="bg-zinc-100/50 dark:bg-zinc-800/30 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] space-y-6">
                      <div className="flex items-center gap-3"><div className="p-2 bg-yellow-400/10 text-yellow-500 rounded-xl"><Stethoscope size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Market Fit Analysis</h4></div>
-                     <div><span className="text-[10px] font-bold italic text-zinc-500">Veredito: {auditResult.market_status}</span><p className="text-sm font-bold italic text-zinc-800 dark:text-zinc-200 mt-2">"{auditResult.verdict}"</p></div>
-                     <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-700"><span className="text-[9px] font-black uppercase text-yellow-500 block mb-2">Tática de Diferenciação</span><p className="text-[11px] font-medium italic text-zinc-600 dark:text-zinc-400">{auditResult.tip}</p></div>
+                     <div><span className="text-[10px] font-bold italic text-zinc-500">Veredito: {marketFit.market_status}</span><p className="text-sm font-bold italic text-zinc-800 dark:text-zinc-200 mt-2">"{marketFit.verdict}"</p></div>
+                     <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-700"><span className="text-[9px] font-black uppercase text-yellow-500 block mb-2">Tática de Diferenciação</span><p className="text-[11px] font-medium italic text-zinc-600 dark:text-zinc-400">{marketFit.tip}</p></div>
                   </div>
                 )}
 

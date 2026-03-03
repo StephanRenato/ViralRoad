@@ -180,24 +180,30 @@ export async function generateFinalStrategy(params: any) {
 export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult> {
     const metrics = params.realMetrics || {};
     const prompt = `
-        Analise o perfil social com os seguintes dados reais:
+        Você é o estrategista chefe da VIRAL ROAD. Sua missão é realizar uma auditoria neural profunda deste perfil:
+        
+        DADOS REAIS DO PERFIL:
         - Plataforma: ${params.profiles?.[0]?.id || 'Instagram'}
-        - Usuário: ${metrics.handle || 'N/A'}
+        - Usuário: @${metrics.handle || 'N/A'}
         - Seguidores: ${metrics.followers || 0}
         - Engajamento: ${metrics.engagement_rate || 0}%
         - Posts: ${metrics.posts || 0}
         - Nicho: ${params.niche || 'Geral'}
         - Especialização: ${params.specialization || 'N/A'}
-        - Objetivo: ${params.objective || 'Crescimento'}
+        - Objetivo Principal: ${params.objective || 'Crescimento e Autoridade'}
 
-        INSTRUÇÕES CRÍTICAS:
-        1. Responda TUDO em Português do Brasil (PT-BR).
-        2. O campo 'key_action_item' DEVE ser uma ação prática, curta e impactante em PT-BR (ex: "Aumente a interação nos stories com enquetes").
-        3. O campo 'tone_audit' DEVE descrever o tom de voz atual e sugerir melhorias.
-        4. O campo 'frequency_suggestion' DEVE ser uma recomendação clara (ex: "3x por semana nos Reels, 5x nos Stories").
-        5. O campo 'content_pillars' DEVE conter 3 a 4 temas principais para o nicho.
-        6. O campo 'content_strategy_advice' DEVE ser a Linha Editorial detalhada.
-        7. NÃO deixe nenhum campo vazio ou em inglês.
+        INSTRUÇÕES PARA O RELATÓRIO (RESPONDA EM PT-BR):
+        1. viral_score: Um número de 0 a 100 baseado no potencial de viralização atual.
+        2. best_format: Identifique o formato vencedor (ex: "Reels de Curiosidade", "Carrosséis Educativos", "Shorts de Lifestyle").
+        3. frequency_suggestion: Plano prático de postagem (ex: "1 Reel diário + 5 Stories estratégicos").
+        4. content_pillars: Lista de 3 a 4 temas que o perfil DEVE dominar.
+        5. diagnostic.status_label: Uma frase curta de status (ex: "PERFIL COM ALTO POTENCIAL", "NECESSITA AJUSTE DE RITMO").
+        6. diagnostic.key_action_item: A ação #1 que o usuário deve fazer HOJE para mudar o jogo.
+        7. diagnostic.tone_audit: Analise o tom de voz. Ele é autoritário? Amigável? Precisa ser mais magnético?
+        8. diagnostic.content_strategy_advice: A Linha Editorial completa. Como ele deve se posicionar? Qual a narrativa mestre?
+        9. next_post_recommendation: Uma ideia real de postagem para ele fazer agora.
+
+        IMPORTANTE: Não use placeholders. Seja específico para o nicho "${params.niche}".
     `;
 
     return await callAIProxy("gpt-4o", prompt, {
@@ -247,7 +253,19 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
 }
 
 export async function auditUserProfile(params: any) {
-  const prompt = `Auditoria: ${params.name}.`;
+  const prompt = `
+    Realize uma análise de Market Fit para o perfil: ${params.name}.
+    Nicho: ${params.niche}
+    Especialização: ${params.specialization}
+
+    Retorne um JSON com:
+    - score: 0-100
+    - market_status: (ex: "Oceano Azul", "Mercado Saturado", "Alta Demanda")
+    - verdict: Uma análise de 2 frases sobre como o perfil se encaixa no mercado atual.
+    - tip: Uma tática de diferenciação única para este usuário.
+
+    Responda em PT-BR.
+  `;
   return await callAIProxy("gpt-4o", prompt, {
     responseMimeType: "application/json",
     responseSchema: {
