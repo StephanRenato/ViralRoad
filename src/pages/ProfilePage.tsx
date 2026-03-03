@@ -91,8 +91,13 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
 
     const fetchWithRetry = async (url: string, options: any, retries = 3, delay = 1000) => {
       for (let i = 0; i < retries; i++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per attempt
+
         try {
-          const res = await fetch(url, options);
+          const res = await fetch(url, { ...options, signal: controller.signal });
+          clearTimeout(timeoutId);
+          
           if (res.ok) return res;
           
           const errorText = await res.text().catch(() => "Erro desconhecido");
@@ -104,8 +109,12 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ user, onLogout, onOpenUpgrade
           }
           return res;
         } catch (err: any) {
+          clearTimeout(timeoutId);
+          if (err.name === 'AbortError') {
+             console.warn(`Tentativa ${i + 1} excedeu o tempo limite (15s).`);
+          }
           if (i === retries - 1) throw err;
-          console.warn(`Tentativa ${i + 1} falhou com erro de rede: ${err.message}. Retentando...`);
+          console.warn(`Tentativa ${i + 1} falhou com erro: ${err.message}. Retentando...`);
           await new Promise(r => setTimeout(r, delay));
         }
       }

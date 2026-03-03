@@ -174,19 +174,46 @@ async function startServer() {
         updated_at: new Date().toISOString()
       };
 
-      // Recursive recovery for missing columns (PGRST204)
+      // Recursive recovery for missing columns (PGRST204 or 42703)
       const performUpsertWithRecovery = async (currentPayload: any, attempt = 1): Promise<{ data: any, error: any, removedColumns: string[] }> => {
         const removedColumns: string[] = [];
+        
+        console.log(`[Upsert Attempt ${attempt}] Payload keys:`, Object.keys(currentPayload));
+        
         const { data, error } = await supabaseServer
           .from('profiles')
           .upsert(currentPayload, { onConflict: 'id' })
           .select();
 
-        if (error && error.code === 'PGRST204' && attempt < 5) {
-          console.warn(`[Attempt ${attempt}] Column error: ${error.message}`);
+        // PGRST204 is PostgREST "Column not found", 42703 is Postgres "Column does not exist"
+        // Also check for general "schema cache" errors which often mean missing columns
+        const isColumnError = error && (
+          error.code === 'PGRST204' || 
+          error.code === '42703' || 
+          error.message?.includes("column") || 
+          error.message?.includes("schema cache")
+        );
+
+        if (isColumnError && attempt < 10) {
+          console.warn(`[Attempt ${attempt}] Column error detected: ${error.code} - ${error.message}`);
           
-          const missingColumnMatch = error.message.match(/column '([^']+)'/) || error.message.match(/'([^']+)' column/);
-          const missingColumn = missingColumnMatch ? missingColumnMatch[1] : (error.message.includes("'settings' column") ? 'settings' : null);
+          const missingColumnMatch = error.message.match(/column "([^"]+)"/) || 
+                                   error.message.match(/column '([^']+)'/) || 
+                                   error.message.match(/'([^']+)' column/) ||
+                                   error.message.match(/"([^"]+)" column/);
+          
+          let missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
+          
+          // Fallback for common columns if regex fails but message contains them
+          if (!missingColumn) {
+            const commonColumns = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url', 'name'];
+            for (const col of commonColumns) {
+              if (error.message.includes(`'${col}'`) || error.message.includes(`"${col}"`) || error.message.includes(` ${col} `)) {
+                missingColumn = col;
+                break;
+              }
+            }
+          }
 
           if (missingColumn && currentPayload[missingColumn] !== undefined) {
             console.log(`Removing problematic column '${missingColumn}' and retrying upsert...`);
@@ -197,6 +224,21 @@ async function startServer() {
               ...result,
               removedColumns: [missingColumn, ...result.removedColumns]
             };
+          } else {
+            // If we can't identify the column but it's a column error, try removing non-essential ones one by one
+            const nonEssential = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url'];
+            for (const col of nonEssential) {
+              if (currentPayload[col] !== undefined) {
+                console.log(`Unidentified column error. Trying to remove '${col}' as a guess...`);
+                const nextPayload = { ...currentPayload };
+                delete nextPayload[col];
+                const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+                return {
+                  ...result,
+                  removedColumns: [col, ...result.removedColumns]
+                };
+              }
+            }
           }
         }
         return { data, error, removedColumns };
@@ -238,20 +280,25 @@ async function startServer() {
     try {
       if (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY) {
         console.warn("SERVICE_ROLE_KEY is missing or same as ANON_KEY. Auth Admin operations will likely fail.");
+        return res.status(403).json({
+          error: "AUTH_CONFIG_ERROR",
+          message: "O servidor não está configurado com a SERVICE_ROLE_KEY necessária para esta operação."
+        });
       }
 
+      console.log(`Attempting admin metadata update for user ${userId}...`);
       const { data, error } = await supabaseServer.auth.admin.updateUserById(userId, {
         user_metadata: metadata
       });
       
       if (error) {
-        console.error("Supabase Auth Update Error:", error);
+        console.error("Supabase Auth Admin Update Error:", error);
         
         // If it's a permission error, it might be the key
-        if (error.status === 403 || error.code === 'not_admin') {
+        if (error.status === 403 || error.code === 'not_admin' || error.message?.includes("not allowed")) {
            return res.status(403).json({
              error: "AUTH_PERMISSION_ERROR",
-             message: "O servidor não tem permissão para atualizar metadados (SERVICE_ROLE_KEY inválida ou ausente).",
+             message: "O servidor não tem permissão administrativa (SERVICE_ROLE_KEY pode estar incorreta).",
              details: error
            });
         }
@@ -262,6 +309,7 @@ async function startServer() {
           details: error
         });
       }
+      console.log("✅ Auth Admin metadata update successful");
       return res.json({ status: "ok", data });
     } catch (error: any) {
       console.error("Auth Proxy Exception:", error);
