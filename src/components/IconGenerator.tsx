@@ -1,6 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 import React, { useState } from "react";
 
+const getApiKey = () => {
+  const envKey = process.env.GEMINI_API_KEY;
+  if (envKey && envKey !== 'GEMINI_KEY_MISSING' && envKey !== 'undefined') {
+    return envKey;
+  }
+  return 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw';
+};
+
 export const IconGenerator: React.FC = () => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -8,7 +16,8 @@ export const IconGenerator: React.FC = () => {
   const generateIcon = async () => {
     setLoading(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+      const apiKey = getApiKey();
+      const ai = new GoogleGenAI({ apiKey });
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash-image",
         contents: {

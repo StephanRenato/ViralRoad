@@ -1,6 +1,5 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
-import { GoogleGenAI } from "@google/genai";
 import { createClient } from '@supabase/supabase-js';
 import dotenv from "dotenv";
 
@@ -42,24 +41,6 @@ const cleanJson = (text: string): string => {
   return text;
 };
 
-const getSafeApiKey = () => {
-  const envKey = (process.env.GEMINI_API_KEY || '').trim();
-  // Fallback key provided by the user/platform
-  const fallbackKey = 'AIzaSyAd0lhhZa2O5HvuIsFiJ_gBgHEUp1m0XRw';
-  
-  if (envKey && envKey.startsWith('AIza') && envKey.length > 20) {
-    return envKey;
-  }
-  
-  // If the env key is the error string itself, definitely use fallback
-  if (envKey === 'GEMINI_KEY_MISSING') {
-    return fallbackKey;
-  }
-
-  console.warn("GEMINI_API_KEY is missing or invalid in environment. Using fallback.");
-  return fallbackKey;
-};
-
 console.log("VIRAL ROAD Server starting...");
 
 async function startServer() {
@@ -87,124 +68,6 @@ async function startServer() {
   // Ping for connectivity test
   app.get("/api/ping", (req, res) => {
     res.send("pong");
-  });
-
-  // Apify Health Check
-  app.get("/api/apify-health", async (req, res) => {
-    try {
-      if (!APIFY_TOKEN || APIFY_TOKEN.length < 10) {
-        return res.status(500).json({ 
-          status: "error", 
-          code: "APIFY_TOKEN_MISSING",
-          message: "APIFY_TOKEN is missing or invalid in environment." 
-        });
-      }
-      
-      const response = await fetch(`https://api.apify.com/v2/users/me?token=${APIFY_TOKEN}`);
-      if (response.ok) {
-        const data = await response.json();
-        return res.json({ 
-          status: "ok", 
-          message: "Apify connection verified", 
-          user: data.data.username,
-          proxy_actors: Object.keys(ACTOR_IDS)
-        });
-      } else {
-        return res.status(response.status).json({ 
-          status: "error", 
-          code: "APIFY_AUTH_ERROR",
-          message: `Apify returned ${response.status}: ${response.statusText}` 
-        });
-      }
-    } catch (error: any) {
-      return res.status(500).json({ status: "error", message: error.message });
-    }
-  });
-
-  // Gemini Health Check
-  app.get("/api/gemini-health", async (req, res) => {
-    try {
-      const apiKey = getSafeApiKey();
-      
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview", // Using a more stable model for health check
-        contents: "Responda apenas 'OK' se estiver funcionando."
-      });
-
-      if (response.text?.includes("OK")) {
-        return res.json({ 
-          status: "ok", 
-          message: "Conexão Gemini verificada",
-          key_preview: `${apiKey.substring(0, 4)}...${apiKey.substring(apiKey.length - 4)}`
-        });
-      } else {
-        throw new Error("Resposta inesperada do modelo.");
-      }
-    } catch (error: any) {
-      console.error("Gemini Health Check Error:", error);
-      return res.status(500).json({ 
-        status: "error", 
-        message: error.message,
-        details: error.details || "Verifique se a chave tem permissão para o modelo."
-      });
-    }
-  });
-
-  // IA Proxy Route
-  app.post("/api/ia-proxy", async (req, res) => {
-    console.log(`${new Date().toISOString()} | IA Proxy Request`);
-    try {
-      const apiKey = getSafeApiKey();
-      // getSafeApiKey now always returns a key (env or fallback)
-      
-      const ai = new GoogleGenAI({ apiKey });
-      const { contents, config, model } = req.body || {};
-
-      // Default to gemini-3-flash-preview if not specified
-      const modelToUse = model || "gemini-3-flash-preview";
-
-      // Adicionado timeout de 45 segundos para a IA
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 45000);
-
-      try {
-        const response = await ai.models.generateContent({
-          model: modelToUse,
-          contents,
-          config
-        });
-
-        clearTimeout(timeoutId);
-
-        const rawText = cleanJson(response.text || '{}');
-        let parsedData;
-        try {
-            parsedData = JSON.parse(rawText);
-        } catch (e) {
-            parsedData = { text: response.text, raw: rawText };
-        }
-        return res.status(200).json(parsedData);
-      } catch (aiError: any) {
-        clearTimeout(timeoutId);
-        if (aiError.name === 'AbortError') {
-          return res.status(504).json({ error: "IA_TIMEOUT", message: "A inteligência artificial demorou muito para responder. Tente novamente." });
-        }
-        throw aiError;
-      }
-    } catch (error: any) {
-      console.error("IA Proxy Error:", error);
-      
-      // Handle leaked key error specifically
-      if (error.message?.includes("leaked") || error.message?.includes("403")) {
-        return res.status(403).json({ 
-          error: "GEMINI_KEY_LEAKED", 
-          message: "Sua chave de API foi reportada como vazada ou é inválida. Por favor, gere uma nova chave no Google AI Studio e configure-a no ambiente." 
-        });
-      }
-
-      return res.status(500).json({ error: "IA_PROXY_ERROR", message: error.message });
-    }
   });
 
   // DB Proxy Route (More resilient than client-side fetch)
