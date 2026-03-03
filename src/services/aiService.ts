@@ -201,7 +201,8 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         6. diagnostic.key_action_item: A ação #1 que o usuário deve fazer HOJE para mudar o jogo.
         7. diagnostic.tone_audit: Analise o tom de voz. Ele é autoritário? Amigável? Precisa ser mais magnético?
         8. diagnostic.content_strategy_advice: A Linha Editorial completa. Como ele deve se posicionar? Qual a narrativa mestre?
-        9. next_post_recommendation: Uma ideia real de postagem para ele fazer agora.
+        9. diagnostic.visual_style: Estética visual e estilo de fotos/vídeos recomendados (ex: "Cores quentes, cortes rápidos, fotos em ambiente externo").
+        10. next_post_recommendation: Uma ideia real de postagem para ele fazer agora.
 
         IMPORTANTE: Não use placeholders. Seja específico para o nicho "${params.niche}".
     `;
@@ -231,7 +232,8 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
                                             status_label: { type: "STRING" },
                                             key_action_item: { type: "STRING" },
                                             tone_audit: { type: "STRING" },
-                                            content_strategy_advice: { type: "STRING" }
+                                            content_strategy_advice: { type: "STRING" },
+                                            visual_style: { type: "STRING" }
                                         }
                                     },
                                     next_post_recommendation: {

@@ -199,7 +199,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         analysis_ai: {
           ...analysisRaw,
           viral_score: analysisRaw.viral_score || score.score,
-          diagnostic: { ...analysisRaw.diagnostic, status_label: score.insight },
+          diagnostic: { 
+            ...(analysisRaw.diagnostic || {}), 
+            status_label: analysisRaw.diagnostic?.status_label || score.insight 
+          },
           market_fit: auditRes
         },
         raw_apify_data: rawResponse,
@@ -489,8 +492,8 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <div className="bg-zinc-900 text-white p-8 rounded-[3rem] shadow-xl border border-zinc-800 space-y-6 flex flex-col justify-center">
                     <div className="flex items-center gap-3"><div className="p-2 bg-yellow-400 rounded-xl text-black"><Target size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Estratégia Neural</h4></div>
                     <div className="space-y-4">
-                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-yellow-500 block mb-1">Melhor Formato</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.best_format}</p></div>
-                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-blue-400 block mb-1">Frequência Recomendada</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.frequency_suggestion}</p></div>
+                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-yellow-500 block mb-1">Melhor Formato</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.best_format || "Identificando formato vencedor..."}</p></div>
+                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-blue-400 block mb-1">Frequência Recomendada</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.frequency_suggestion || "Calculando ritmo ideal..."}</p></div>
                     </div>
                 </div>
              </div>
@@ -500,22 +503,45 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <div className="lg:col-span-2 bg-gradient-to-br from-yellow-400 to-yellow-500 p-8 rounded-[2.5rem] shadow-2xl space-y-6 text-black relative overflow-hidden group">
                    <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 blur-[60px] pointer-events-none" />
                    <div className="flex items-center gap-3"><div className="p-2 bg-black text-yellow-400 rounded-xl"><Lightbulb size={20} /></div><h3 className="text-xl font-black italic uppercase tracking-tighter">Ação Imediata (Tático)</h3></div>
-                   <p className="text-2xl font-black italic uppercase leading-tight drop-shadow-sm">"{analysis?.diagnostic?.key_action_item}"</p>
+                   <p className="text-2xl font-black italic uppercase leading-tight drop-shadow-sm">"{analysis?.diagnostic?.key_action_item || "Identificando ação de alto impacto..."}"</p>
                    <button onClick={() => navigate('/dashboard')} className="px-6 py-3 bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all shadow-xl flex items-center gap-2">EXECUTAR AGORA <ArrowRight size={14} /></button>
                 </div>
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-purple-500 mb-2"><Megaphone size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Auditoria de Tom</h4></div>
                     <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {analysis?.diagnostic?.tone_audit ? `"${analysis.diagnostic.tone_audit}"` : "Auditoria pendente..."}
+                      {analysis?.diagnostic?.tone_audit ? `"${analysis.diagnostic.tone_audit}"` : "Analisando frequência e tom de voz..."}
                     </p>
                 </div>
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-blue-500 mb-2"><BrainCircuit size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Linha Editorial</h4></div>
                     <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {analysis?.diagnostic?.content_strategy_advice ? `"${analysis.diagnostic.content_strategy_advice}"` : "Linha editorial pendente..."}
+                      {analysis?.diagnostic?.content_strategy_advice ? `"${analysis.diagnostic.content_strategy_advice}"` : "Construindo narrativa mestre..."}
                     </p>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
+                   <div className="flex items-center gap-2 text-emerald-500 mb-2"><Eye size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Estética Visual & Fotos</h4></div>
+                    <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                      {analysis?.diagnostic?.visual_style ? `"${analysis.diagnostic.visual_style}"` : "Definindo padrão visual e estilo de fotos..."}
+                    </p>
+                </div>
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-6">
+                   <div className="flex items-center gap-3"><div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Hash size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Pilares de Conteúdo</h4></div>
+                   <div className="flex flex-wrap gap-2">
+                       {analysis?.content_pillars && analysis.content_pillars.length > 0 ? (
+                         analysis.content_pillars.map((p, i) => (
+                           <span key={i} className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest italic">
+                             {p}
+                           </span>
+                         ))
+                       ) : (
+                         <span className="text-[10px] font-bold italic text-zinc-500">Definindo pilares estratégicos...</span>
+                       )}
+                   </div>
                 </div>
              </div>
 
@@ -578,7 +604,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                </div>
               )}
 
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                 {marketFit && (
                   <div className="bg-zinc-100/50 dark:bg-zinc-800/30 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] space-y-6">
                      <div className="flex items-center gap-3"><div className="p-2 bg-yellow-400/10 text-yellow-500 rounded-xl"><Stethoscope size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Market Fit Analysis</h4></div>
@@ -586,21 +612,6 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                      <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-700"><span className="text-[9px] font-black uppercase text-yellow-500 block mb-2">Tática de Diferenciação</span><p className="text-[11px] font-medium italic text-zinc-600 dark:text-zinc-400">{marketFit.tip}</p></div>
                   </div>
                 )}
-
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-6">
-                   <div className="flex items-center gap-3"><div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Hash size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Pilares de Conteúdo</h4></div>
-                   <div className="flex flex-wrap gap-2">
-                       {analysis?.content_pillars && analysis.content_pillars.length > 0 ? (
-                         analysis.content_pillars.map((p, i) => (
-                           <span key={i} className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest italic">
-                             {p}
-                           </span>
-                         ))
-                       ) : (
-                         <span className="text-[10px] font-bold italic text-zinc-500">Definindo pilares estratégicos...</span>
-                       )}
-                   </div>
-                </div>
              </div>
 
              {analysis?.next_post_recommendation && (
