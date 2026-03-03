@@ -215,7 +215,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         objective,
         normalized_metrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
         analysis_ai: mergedAnalysisAi,
-        raw_apify_data: rawResponse,
+        raw_apify_data: null, // Strip raw data to prevent 520 errors
         recent_posts: postsData,
         last_sync: new Date().toISOString()
       };

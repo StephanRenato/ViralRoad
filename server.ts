@@ -212,21 +212,25 @@ async function startServer() {
 
   app.post("/api/db/upsert-profile", async (req, res) => {
     const { userId, profileData, accessToken } = req.body;
-    console.log(`${new Date().toISOString()} | DB Upsert Request for ${userId}`);
+    const requestId = Math.random().toString(36).substring(7);
+    console.log(`${new Date().toISOString()} | [${requestId}] DB Upsert Request for ${userId}`);
     
     if (!userId) return res.status(400).json({ error: "Missing userId" });
     if (!profileData) return res.status(400).json({ error: "Missing profileData" });
 
     try {
-      // Use the provided access token if SERVICE_ROLE_KEY is missing or invalid
-      let client = supabaseServer;
-      if (accessToken && (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY)) {
-        console.log("Using user access token for proxy upsert (Service Role Key missing)");
-        client = createClient(SUPABASE_URL, ANON_KEY, {
-          global: { headers: { Authorization: `Bearer ${accessToken}` } },
+      // Create a FRESH client for this request to avoid connection pooling issues
+      const getClient = () => {
+        if (accessToken && (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY)) {
+          return createClient(SUPABASE_URL, ANON_KEY, {
+            global: { headers: { Authorization: `Bearer ${accessToken}` } },
+            auth: { persistSession: false }
+          });
+        }
+        return createClient(SUPABASE_URL, SERVICE_ROLE_KEY || ANON_KEY, {
           auth: { persistSession: false }
         });
-      }
+      };
 
       // Ensure the ID is set correctly in the payload
       const payload: any = { 
@@ -238,17 +242,26 @@ async function startServer() {
       // Recursive recovery for missing columns (PGRST204 or 42703) or 5xx errors
       const performUpsertWithRecovery = async (currentPayload: any, attempt = 1): Promise<{ data: any, error: any, removedColumns: string[] }> => {
         const removedColumns: string[] = [];
+        const payloadStr = JSON.stringify(currentPayload);
+        const payloadSize = payloadStr.length;
         
-        console.log(`[Upsert Attempt ${attempt}] Payload keys:`, Object.keys(currentPayload));
+        console.log(`[${requestId}] [Attempt ${attempt}] Payload size: ${(payloadSize / 1024).toFixed(2)} KB | Keys:`, Object.keys(currentPayload));
         
         try {
-          const { data, error } = await client
-            .from('profiles')
-            .upsert(currentPayload, { onConflict: 'id' })
-            .select();
+          const client = getClient();
+          // On later attempts, don't use .select() to keep the response small and avoid timeouts
+          const query = client.from('profiles').upsert(currentPayload, { onConflict: 'id' });
+          
+          let result;
+          if (attempt < 3) {
+            result = await query.select();
+          } else {
+            result = await query;
+          }
+
+          const { data, error } = result;
 
           // PGRST204 is PostgREST "Column not found", 42703 is Postgres "Column does not exist"
-          // Also check for general "schema cache" errors which often mean missing columns
           const isColumnError = error && (
             error.code === 'PGRST204' || 
             error.code === '42703' || 
@@ -256,89 +269,54 @@ async function startServer() {
             error.message?.includes("schema cache")
           );
 
-          // Detect 520 or 5xx errors (often returned as HTML in the message)
+          // Detect 520 or 5xx errors
           const err = error as any;
           const isServerError = err && (
             err.status === 520 || 
             err.status >= 500 || 
             err.message?.includes("520") || 
             err.message?.includes("Cloudflare") ||
-            err.message?.includes("<title>")
+            err.message?.includes("<title>") ||
+            err.message?.includes("unknown error") ||
+            err.message?.includes("timeout")
           );
 
           if (isColumnError && attempt < 10) {
-            console.warn(`[Attempt ${attempt}] Column error detected: ${error.code} - ${error.message}`);
+            console.warn(`[${requestId}] [Attempt ${attempt}] Column error: ${error.message}`);
             
             const missingColumnMatch = error.message.match(/column "([^"]+)"/) || 
-                                     error.message.match(/column '([^']+)'/) || 
-                                     error.message.match(/'([^']+)' column/) ||
-                                     error.message.match(/"([^"]+)" column/);
+                                     error.message.match(/column '([^']+)'/);
             
             let missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
             
-            // Fallback for common columns if regex fails but message contains them
-            if (!missingColumn) {
-              const commonColumns = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url', 'name'];
-              for (const col of commonColumns) {
-                if (error.message.includes(`'${col}'`) || error.message.includes(`"${col}"`) || error.message.includes(` ${col} `)) {
-                  missingColumn = col;
-                  break;
-                }
-              }
-            }
-
             if (missingColumn && currentPayload[missingColumn] !== undefined) {
-              console.log(`Removing problematic column '${missingColumn}' and retrying upsert...`);
               const nextPayload = { ...currentPayload };
               delete nextPayload[missingColumn];
               const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
-              return {
-                ...result,
-                removedColumns: [missingColumn, ...result.removedColumns]
-              };
-            } else {
-              // If we can't identify the column but it's a column error, try removing non-essential ones one by one
-              const nonEssential = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url'];
-              for (const col of nonEssential) {
-                if (currentPayload[col] !== undefined) {
-                  console.log(`Unidentified column error. Trying to remove '${col}' as a guess...`);
-                  const nextPayload = { ...currentPayload };
-                  delete nextPayload[col];
-                  const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
-                  return {
-                    ...result,
-                    removedColumns: [col, ...result.removedColumns]
-                  };
-                }
-              }
+              return { ...result, removedColumns: [missingColumn, ...result.removedColumns] };
             }
           }
 
           // Handle 520/5xx errors with retries and eventually stripping heavy data
-          if (isServerError && attempt < 7) {
-            console.warn(`[Attempt ${attempt}] Server/Cloudflare error (520/5xx) detected. Retrying...`);
+          if (isServerError && attempt < 10) {
+            console.warn(`[${requestId}] [Attempt ${attempt}] Server Error (520/5xx). Retrying...`);
             
             let nextPayload = { ...currentPayload };
             let strippedSomething = false;
             let strippedLabel = "";
 
-            // Attempt 2: Strip avatar_url
-            if (attempt === 2 && nextPayload.avatar_url) {
-              delete nextPayload.avatar_url;
-              strippedSomething = true;
-              strippedLabel = "avatar_url";
-            } 
-            // Attempt 3: Strip raw_apify_data from social_profiles (Heaviest part)
-            else if (attempt === 3 && nextPayload.social_profiles) {
+            // Progressive stripping logic
+            if (attempt === 2 && nextPayload.social_profiles) {
+              // Strip raw_apify_data from all profiles (if not already null)
               nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
                 const { raw_apify_data, ...rest } = p;
                 return rest;
               });
               strippedSomething = true;
               strippedLabel = "raw_apify_data";
-            }
-            // Attempt 4: Strip recent_posts from social_profiles
-            else if (attempt === 4 && nextPayload.social_profiles) {
+            } 
+            else if (attempt === 3 && nextPayload.social_profiles) {
+              // Strip recent_posts (often large)
               nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
                 const { recent_posts, ...rest } = p;
                 return rest;
@@ -346,31 +324,55 @@ async function startServer() {
               strippedSomething = true;
               strippedLabel = "recent_posts";
             }
-            // Attempt 5: Strip settings
+            else if (attempt === 4 && nextPayload.social_profiles) {
+              // Truncate long analysis strings
+              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
+                if (p.analysis_ai?.diagnostic) {
+                  const diag = { ...p.analysis_ai.diagnostic };
+                  ['content_strategy_advice', 'tone_audit', 'visual_style'].forEach(key => {
+                    if (diag[key]) diag[key] = diag[key].substring(0, 300) + "...";
+                  });
+                  return { ...p, analysis_ai: { ...p.analysis_ai, diagnostic: diag } };
+                }
+                return p;
+              });
+              strippedSomething = true;
+              strippedLabel = "truncated analysis";
+            }
             else if (attempt === 5 && nextPayload.settings) {
               delete nextPayload.settings;
               strippedSomething = true;
               strippedLabel = "settings";
             }
-
-            if (strippedSomething) {
-              console.log(`⚠️ Entering SAFE MODE (Attempt ${attempt}): Stripping ${strippedLabel} to reduce payload size and bypass 520 error.`);
-              const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
-              return {
-                ...result,
-                removedColumns: [`${strippedLabel} (Safe Mode)`, ...result.removedColumns]
-              };
+            else if (attempt === 6 && nextPayload.social_profiles) {
+              // Nuclear: Only keep the last profile
+              if (nextPayload.social_profiles.length > 1) {
+                nextPayload.social_profiles = [nextPayload.social_profiles[nextPayload.social_profiles.length - 1]];
+                strippedSomething = true;
+                strippedLabel = "all but last profile";
+              }
+            }
+            else if (attempt === 7 && nextPayload.social_profiles) {
+              delete nextPayload.social_profiles;
+              strippedSomething = true;
+              strippedLabel = "social_profiles (Nuclear)";
             }
 
-            // Wait a bit before retry (exponential backoff)
-            const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000);
+            if (strippedSomething) {
+              console.log(`[${requestId}] ⚠️ SAFE MODE: Stripping ${strippedLabel}`);
+              const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+              return { ...result, removedColumns: [`${strippedLabel} (Safe Mode)`, ...result.removedColumns] };
+            }
+
+            // Exponential backoff
+            const delay = Math.min(300 * Math.pow(2, attempt - 1), 5000);
             await new Promise(resolve => setTimeout(resolve, delay));
             return performUpsertWithRecovery(currentPayload, attempt + 1);
           }
 
           return { data, error, removedColumns };
         } catch (exc: any) {
-          console.error(`[Attempt ${attempt}] Exception during upsert:`, exc);
+          console.error(`[${requestId}] [Attempt ${attempt}] Exception:`, exc.message);
           if (attempt < 3) {
             await new Promise(resolve => setTimeout(resolve, 1000));
             return performUpsertWithRecovery(currentPayload, attempt + 1);
@@ -382,25 +384,15 @@ async function startServer() {
       const { data, error, removedColumns } = await performUpsertWithRecovery(payload);
       
       if (error) {
-        console.error("Final Supabase Upsert Error:", error);
-        return res.status(400).json({ 
-          error: "SUPABASE_UPSERT_ERROR", 
-          message: error.message,
-          details: error 
-        });
+        const errorMsg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
+        console.error(`[${requestId}] Final Error:`, errorMsg.substring(0, 500));
+        return res.status(400).json({ error: "SUPABASE_UPSERT_ERROR", message: errorMsg });
       }
-      return res.json({ 
-        status: "ok", 
-        data, 
-        recovered: removedColumns.length > 0,
-        removedColumns 
-      });
+      
+      return res.json({ status: "ok", data, recovered: removedColumns.length > 0, removedColumns });
     } catch (error: any) {
-      console.error("DB Proxy Exception:", error);
-      return res.status(500).json({ 
-        error: "DB_PROXY_EXCEPTION", 
-        message: error.message || "Erro interno ao processar upsert via proxy." 
-      });
+      console.error(`[${requestId}] Global Exception:`, error);
+      return res.status(500).json({ error: "DB_PROXY_EXCEPTION", message: error.message });
     }
   });
 
