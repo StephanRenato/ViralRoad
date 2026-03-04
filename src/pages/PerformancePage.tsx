@@ -195,6 +195,8 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       const mergedAnalysisAi = {
         ...analysisRaw,
         viral_score: analysisRaw.viral_score || score.score,
+        best_format: analysisRaw.best_format || "Identificando formato vencedor...",
+        frequency_suggestion: analysisRaw.frequency_suggestion || "Calculando ritmo ideal...",
         diagnostic: { 
           ...(analysisRaw.diagnostic || {}), 
           status_label: analysisRaw.diagnostic?.status_label || score.insight,
@@ -542,21 +544,21 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <div className="lg:col-span-2 bg-gradient-to-br from-yellow-400 to-yellow-500 p-8 rounded-[2.5rem] shadow-2xl space-y-6 text-black relative overflow-hidden group">
                    <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 blur-[60px] pointer-events-none" />
                    <div className="flex items-center gap-3"><div className="p-2 bg-black text-yellow-400 rounded-xl"><Lightbulb size={20} /></div><h3 className="text-xl font-black italic uppercase tracking-tighter">Ação Imediata (Tático)</h3></div>
-                   <p className="text-2xl font-black italic uppercase leading-tight drop-shadow-sm">"{analysis?.diagnostic?.key_action_item || "Identificando ação de alto impacto..."}"</p>
+                   <p className="text-2xl font-black italic uppercase leading-tight drop-shadow-sm">"{analysis?.diagnostic?.key_action_item || "Aguardando diagnóstico neural..."}"</p>
                    <button onClick={() => navigate('/dashboard')} className="px-6 py-3 bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all shadow-xl flex items-center gap-2">EXECUTAR AGORA <ArrowRight size={14} /></button>
                 </div>
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-purple-500 mb-2"><Megaphone size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Auditoria de Tom</h4></div>
                     <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {analysis?.diagnostic?.tone_audit ? `"${analysis.diagnostic.tone_audit}"` : "Analisando frequência e tom de voz..."}
+                      {analysis?.diagnostic?.tone_audit ? `"${analysis.diagnostic.tone_audit}"` : '"Analisando tom de voz..."'}
                     </p>
                 </div>
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-blue-500 mb-2"><BrainCircuit size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Linha Editorial</h4></div>
                     <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {analysis?.diagnostic?.content_strategy_advice ? `"${analysis.diagnostic.content_strategy_advice}"` : "Construindo narrativa mestre..."}
+                      {analysis?.diagnostic?.content_strategy_advice ? `"${analysis.diagnostic.content_strategy_advice}"` : '"Construindo linha editorial..."'}
                     </p>
                 </div>
              </div>
@@ -565,7 +567,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-emerald-500 mb-2"><Eye size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Estética Visual & Fotos</h4></div>
                     <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {analysis?.diagnostic?.visual_style ? `"${analysis.diagnostic.visual_style}"` : "Definindo padrão visual e estilo de fotos..."}
+                      {analysis?.diagnostic?.visual_style ? `"${analysis.diagnostic.visual_style}"` : '"Definindo estética visual..."'}
                     </p>
                 </div>
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-6">
