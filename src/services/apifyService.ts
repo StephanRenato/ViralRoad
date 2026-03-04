@@ -81,10 +81,11 @@ export async function fetchInstagramPosts(url: string, limit: number = 40) {
     directUrls: [normalizedUrl], 
     resultsType: 'posts', 
     resultsLimit: limit,
+    searchType: 'user',
     addParentData: false,
     includeReels: true,
     includeVideos: true,
-    // Ensure we get a mix of content
+    // Ensure we get a mix of content and prioritize Reels if possible
   });
   
   // Filter and sort to ensure we have a good mix and recent items

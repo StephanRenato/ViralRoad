@@ -220,16 +220,33 @@ async function startServer() {
 
     try {
       // Create a FRESH client for this request to avoid connection pooling issues
+      // and add a timeout to the fetch operation
       const getClient = () => {
+        const options: any = {
+          auth: { persistSession: false },
+          global: {
+            fetch: (url: string, opts: any) => {
+              // Use a 45s timeout for database operations
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 45000);
+              return fetch(url, { 
+                ...opts, 
+                signal: controller.signal 
+              }).finally(() => clearTimeout(timeoutId));
+            }
+          }
+        };
+
         if (accessToken && (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY)) {
           return createClient(SUPABASE_URL, ANON_KEY, {
-            global: { headers: { Authorization: `Bearer ${accessToken}` } },
-            auth: { persistSession: false }
+            ...options,
+            global: { 
+              ...options.global,
+              headers: { Authorization: `Bearer ${accessToken}` } 
+            }
           });
         }
-        return createClient(SUPABASE_URL, SERVICE_ROLE_KEY || ANON_KEY, {
-          auth: { persistSession: false }
-        });
+        return createClient(SUPABASE_URL, SERVICE_ROLE_KEY || ANON_KEY, options);
       };
 
       // Ensure the ID is set correctly in the payload
@@ -316,16 +333,16 @@ async function startServer() {
           }
 
           // Handle 520/5xx errors with retries and eventually stripping heavy data
-          if (isServerError && attempt < 10) {
+          if (isServerError && attempt < 12) {
             console.warn(`[${requestId}] [Attempt ${attempt}] Server Error (520/5xx). Retrying...`);
             
             let nextPayload = { ...currentPayload };
             let strippedSomething = false;
             let strippedLabel = "";
 
-            // Progressive stripping logic
+            // Progressive stripping logic - even more aggressive now
             if (attempt === 2 && nextPayload.social_profiles) {
-              // Strip raw_apify_data from all profiles (if not already null)
+              // Strip raw_apify_data from all profiles
               nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
                 const { raw_apify_data, ...rest } = p;
                 return rest;
@@ -342,26 +359,28 @@ async function startServer() {
               strippedSomething = true;
               strippedLabel = "recent_posts";
             }
-            else if (attempt === 4 && nextPayload.avatar_url && nextPayload.avatar_url.length > 2000) {
-              // Strip large base64 avatar_url
+            else if (attempt === 4 && nextPayload.avatar_url && nextPayload.avatar_url.length > 1000) {
+              // Strip large avatar_url
               delete nextPayload.avatar_url;
               strippedSomething = true;
-              strippedLabel = "avatar_url (Large Base64)";
+              strippedLabel = "avatar_url";
             }
             else if (attempt === 5 && nextPayload.social_profiles) {
-              // Truncate long analysis strings
+              // Truncate analysis_ai fields significantly
               nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
-                if (p.analysis_ai?.diagnostic) {
-                  const diag = { ...p.analysis_ai.diagnostic };
-                  ['content_strategy_advice', 'tone_audit', 'visual_style'].forEach(key => {
-                    if (typeof diag[key] === 'string') diag[key] = diag[key].substring(0, 200) + "...";
-                  });
-                  return { ...p, analysis_ai: { ...p.analysis_ai, diagnostic: diag } };
+                if (p.analysis_ai) {
+                  const { diagnostic, next_post_recommendation, ...rest } = p.analysis_ai;
+                  // Keep only essential diagnostic info
+                  const miniDiag = diagnostic ? { 
+                    status_label: diagnostic.status_label,
+                    key_action_item: (diagnostic.key_action_item || "").substring(0, 100)
+                  } : undefined;
+                  return { ...p, analysis_ai: { ...rest, diagnostic: miniDiag } };
                 }
                 return p;
               });
               strippedSomething = true;
-              strippedLabel = "truncated analysis";
+              strippedLabel = "truncated analysis_ai";
             }
             else if (attempt === 6 && nextPayload.settings) {
               delete nextPayload.settings;
@@ -369,19 +388,28 @@ async function startServer() {
               strippedLabel = "settings";
             }
             else if (attempt === 7 && nextPayload.social_profiles) {
-              // Nuclear: Only keep the last profile
+              // Strip analysis_ai entirely from all profiles
+              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
+                const { analysis_ai, ...rest } = p;
+                return rest;
+              });
+              strippedSomething = true;
+              strippedLabel = "analysis_ai (Nuclear)";
+            }
+            else if (attempt === 8 && nextPayload.social_profiles) {
+              // Only keep the VERY LAST profile
               if (nextPayload.social_profiles.length > 1) {
                 nextPayload.social_profiles = [nextPayload.social_profiles[nextPayload.social_profiles.length - 1]];
                 strippedSomething = true;
                 strippedLabel = "all but last profile";
               }
             }
-            else if (attempt === 8 && nextPayload.social_profiles) {
+            else if (attempt === 9 && nextPayload.social_profiles) {
               delete nextPayload.social_profiles;
               strippedSomething = true;
               strippedLabel = "social_profiles (Nuclear)";
             }
-            else if (attempt === 9) {
+            else if (attempt >= 10) {
               // Absolute minimal payload
               nextPayload = { id: userId, updated_at: new Date().toISOString() };
               strippedSomething = true;
@@ -389,13 +417,14 @@ async function startServer() {
             }
 
             if (strippedSomething) {
-              console.log(`[${requestId}] ⚠️ SAFE MODE: Stripping ${strippedLabel}`);
-              const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
-              return { ...result, removedColumns: [`${strippedLabel} (Safe Mode)`, ...result.removedColumns] };
+              console.log(`[${requestId}] ⚠️ SAFE MODE: Stripping ${strippedLabel} for next attempt`);
+              // Add a small delay before retry in safe mode
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              return performUpsertWithRecovery(nextPayload, attempt + 1);
             }
 
-            // Exponential backoff
-            const delay = Math.min(300 * Math.pow(2, attempt - 1), 5000);
+            // Exponential backoff for non-stripping retries
+            const delay = Math.min(500 * Math.pow(2, attempt - 1), 10000);
             await new Promise(resolve => setTimeout(resolve, delay));
             return performUpsertWithRecovery(currentPayload, attempt + 1);
           }

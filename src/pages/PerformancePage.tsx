@@ -152,10 +152,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       
       let postsData = [];
       if (platformKey === 'instagram') {
-        addLog(`Buscando métricas detalhadas de postagens...`);
+        addLog(`Buscando métricas detalhadas de postagens (Feed + Reels)...`);
         try {
-          postsData = await fetchInstagramPosts(urlToUse, 10);
-          addLog(`${postsData.length} postagens recentes analisadas.`);
+          postsData = await fetchInstagramPosts(urlToUse, 40);
+          addLog(`${postsData.length} postagens recentes detectadas.`);
         } catch (postErr) {
           console.warn("Erro ao buscar posts:", postErr);
           addLog(`Aviso: Falha ao buscar posts detalhados.`);
@@ -210,7 +210,8 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
       const minimalPostsData = postsData.map((p: any, idx: number) => {
         // Prioritize displayUrl as it's usually the high-res cover for both photos and videos
-        const coverImage = p.displayUrl || p.thumbnailUrl || (p.isVideo ? p.videoUrl : null);
+        // For Reels, Apify often provides displayUrl or thumbnailUrl
+        const coverImage = p.displayUrl || p.thumbnailUrl || p.videoThumbnailUrl || (p.isVideo ? p.videoUrl : null);
         
         return {
           displayUrl: coverImage,
@@ -221,10 +222,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
           url: p.url,
           shortCode: p.shortCode,
           id: p.id,
-          type: p.type || (p.isVideo ? 'Video' : 'Image'),
-          isVideo: p.isVideo || p.type === 'Video' || !!p.videoUrl
+          type: p.type || (p.isVideo || p.videoUrl ? 'Video' : 'Image'),
+          isVideo: p.isVideo || p.type === 'Video' || !!p.videoUrl || !!p.videoThumbnailUrl
         };
-      }).slice(0, 20);
+      }).slice(0, 40);
 
       const newProfile: SocialProfile = {
         platform: activePlatform,
