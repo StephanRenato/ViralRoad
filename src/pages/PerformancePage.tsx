@@ -208,16 +208,23 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         content_pillars: analysisRaw.content_pillars || []
       };
 
-      const minimalPostsData = postsData.map((p: any) => ({
-        displayUrl: p.displayUrl || p.thumbnailUrl || p.videoUrl,
-        likesCount: p.likesCount || 0,
-        videoViewCount: p.videoViewCount || p.playCount || 0,
-        caption: (p.caption || '').substring(0, 500),
-        timestamp: p.timestamp,
-        url: p.url,
-        shortCode: p.shortCode,
-        id: p.id
-      })).slice(0, 15);
+      const minimalPostsData = postsData.map((p: any, idx: number) => {
+        // Prioritize displayUrl as it's usually the high-res cover for both photos and videos
+        const coverImage = p.displayUrl || p.thumbnailUrl || (p.isVideo ? p.videoUrl : null);
+        
+        return {
+          displayUrl: coverImage,
+          likesCount: p.likesCount || 0,
+          videoViewCount: p.videoViewCount || p.playCount || 0,
+          caption: (p.caption || '').substring(0, 500),
+          timestamp: p.timestamp,
+          url: p.url,
+          shortCode: p.shortCode,
+          id: p.id,
+          type: p.type || (p.isVideo ? 'Video' : 'Image'),
+          isVideo: p.isVideo || p.type === 'Video' || !!p.videoUrl
+        };
+      }).slice(0, 20);
 
       const newProfile: SocialProfile = {
         platform: activePlatform,
@@ -383,7 +390,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
 
   const getInstagramUrl = (post: any) => {
     if (post.url && post.url.includes('instagram.com')) return post.url;
-    if (post.shortCode) return `https://www.instagram.com/p/${post.shortCode}/`;
+    if (post.shortCode) {
+      const prefix = post.isVideo ? 'reels' : 'p';
+      return `https://www.instagram.com/${prefix}/${post.shortCode}/`;
+    }
     if (post.id && !post.id.includes('_')) return `https://www.instagram.com/p/${post.id}/`;
     return '#';
   };
@@ -599,14 +609,32 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                             referrerPolicy="no-referrer"
                             onError={(e) => {
-                              // If the original URL fails, try to use a placeholder that looks like a social post
-                              e.currentTarget.src = `https://picsum.photos/seed/post-${idx}-${currentProfile.username}/400/400`;
-                              e.currentTarget.onerror = null;
+                              const target = e.currentTarget;
+                              // Try a different property if available
+                              if (post.thumbnailUrl && target.src !== post.thumbnailUrl) {
+                                target.src = post.thumbnailUrl;
+                              } else {
+                                target.src = `https://picsum.photos/seed/post-${idx}-${currentProfile.username}/400/400`;
+                                target.onerror = null;
+                              }
                             }}
                           />
+                          <div className="absolute top-3 right-3 z-10">
+                            {post.isVideo ? (
+                              <div className="bg-black/60 backdrop-blur-md p-1.5 rounded-lg text-white">
+                                <Clapperboard size={14} />
+                              </div>
+                            ) : (
+                              <div className="bg-black/60 backdrop-blur-md p-1.5 rounded-lg text-white">
+                                <Eye size={14} />
+                              </div>
+                            )}
+                          </div>
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white">
                             <div className="flex items-center gap-1 font-black text-xs"><Heart size={14} fill="currentColor" /> {post.likesCount || 0}</div>
-                            <div className="flex items-center gap-1 font-black text-xs"><Clapperboard size={14} fill="currentColor" /> {post.videoViewCount || 0}</div>
+                            {post.isVideo && (
+                              <div className="flex items-center gap-1 font-black text-xs"><Eye size={14} fill="currentColor" /> {post.videoViewCount || 0}</div>
+                            )}
                           </div>
                         </div>
                         <div className="p-4 space-y-2">

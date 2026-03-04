@@ -75,15 +75,24 @@ export async function fetchInstagramProfileData(url: string) {
   return { normalized: mapToAppMetrics(normalized), raw: items[0] };
 }
 
-export async function fetchInstagramPosts(url: string, limit: number = 20) {
+export async function fetchInstagramPosts(url: string, limit: number = 40) {
   const normalizedUrl = normalizeUrl(url, 'instagram');
   const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { 
     directUrls: [normalizedUrl], 
     resultsType: 'posts', 
     resultsLimit: limit,
-    addParentData: false
+    addParentData: false,
+    includeReels: true,
+    includeVideos: true,
+    // Ensure we get a mix of content
   });
-  return items;
+  
+  // Filter and sort to ensure we have a good mix and recent items
+  return items.sort((a: any, b: any) => {
+    const dateA = new Date(a.timestamp || 0).getTime();
+    const dateB = new Date(b.timestamp || 0).getTime();
+    return dateB - dateA;
+  });
 }
 
 export async function fetchTikTokProfileData(url: string) {
