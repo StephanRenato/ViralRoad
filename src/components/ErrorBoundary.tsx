@@ -12,6 +12,10 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
+  constructor(props: Props) {
+    super(props);
+    console.log("🛡️ ErrorBoundary: Ativado.");
+  }
   public state: State = {
     hasError: false,
     error: null

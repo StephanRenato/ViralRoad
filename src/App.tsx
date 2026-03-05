@@ -24,6 +24,7 @@ import UpdatePassword from './pages/UpdatePassword';
 import SuccessPage from './pages/SuccessPage';
 
 const App: React.FC = () => {
+  console.log("📱 App: Renderizando componente raiz...");
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -211,18 +212,25 @@ const App: React.FC = () => {
   useEffect(() => {
     if (theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
+  }, [theme]);
 
+  useEffect(() => {
+    console.log("🔐 App: Iniciando monitoramento de autenticação...");
+    
     // Verifica sessão inicial
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setSession(session);
-        fetchUserData(session.user);
+    supabase.auth.getSession().then(({ data: { session: initialSession } }: any) => {
+      if (initialSession?.user) {
+        console.log("👤 App: Sessão inicial detectada para:", initialSession.user.email);
+        setSession(initialSession);
+        fetchUserData(initialSession.user);
       } else {
+        console.log("👤 App: Nenhuma sessão inicial encontrada.");
         setLoading(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, currentSession: any) => {
+      console.log(`🔔 App: Evento de Auth: ${event}`);
       if (currentSession?.user) {
         setSession(currentSession);
         if (!user || user.id !== currentSession.user.id) {
@@ -235,8 +243,11 @@ const App: React.FC = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [theme]);
+    return () => {
+      console.log("🔐 App: Encerrando monitoramento de autenticação.");
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
