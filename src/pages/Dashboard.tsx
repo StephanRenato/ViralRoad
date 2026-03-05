@@ -1,18 +1,17 @@
 
-import React, { lazy, Suspense } from 'react';
+import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { User } from '../types';
 import { Loader2 } from 'lucide-react';
 import ChatWidget from '../components/ChatWidget';
 
-// Code Splitting - Sub-páginas do Dashboard
-// Mantemos o lazy loading para não pesar o bundle inicial, mas a UX será otimizada pelo Sidebar prefetch
-const GeneratorPage = lazy(() => import('./GeneratorPage'));
-const RoadmapPage = lazy(() => import('./RoadmapPage'));
-const LibraryPage = lazy(() => import('./LibraryPage'));
-const HooksLibraryPage = lazy(() => import('./HooksLibraryPage'));
-const ProfilePage = lazy(() => import('./ProfilePage'));
-const PerformancePage = lazy(() => import('./PerformancePage'));
+// Sub-páginas do Dashboard
+import GeneratorPage from './GeneratorPage';
+import RoadmapPage from './RoadmapPage';
+import LibraryPage from './LibraryPage';
+import HooksLibraryPage from './HooksLibraryPage';
+import ProfilePage from './ProfilePage';
+import PerformancePage from './PerformancePage';
 
 
 // Loader leve e local para transições internas (não cobre a sidebar)

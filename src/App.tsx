@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, PlanType, SubscriptionStatus, ProfileType } from './types';
 import { supabase } from './services/supabase';
@@ -7,22 +7,21 @@ import GlobalLoader from './components/GlobalLoader';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 
-// Lazy Loading - Rotas Públicas & Institucionais
-const LandingPage = lazy(() => import('./pages/LandingPage'));
-const Privacy = lazy(() => import('./pages/Privacy'));
-const Terms = lazy(() => import('./pages/Terms'));
-const Support = lazy(() => import('./pages/Support'));
-const SalesPage = lazy(() => import('./pages/SalesPage'));
+// Rotas Públicas & Institucionais
+import LandingPage from './pages/LandingPage';
+import Privacy from './pages/Privacy';
+import Terms from './pages/Terms';
+import Support from './pages/Support';
+import SalesPage from './pages/SalesPage';
 
-// Lazy Loading - Autenticação
-const Login = lazy(() => import('./pages/Login'));
-const Register = lazy(() => import('./pages/Register'));
-const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
-const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
+// Autenticação
+import Login from './pages/Login';
+import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import UpdatePassword from './pages/UpdatePassword';
 
-// Lazy Loading - Aplicação
-
-const SuccessPage = lazy(() => import('./pages/SuccessPage'));
+// Aplicação
+import SuccessPage from './pages/SuccessPage';
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
