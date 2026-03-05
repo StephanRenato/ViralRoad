@@ -16,7 +16,7 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
         input: {
-          main: 'vite.html'
+          main: 'app.html'
         }
       }
     },

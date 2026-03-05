@@ -859,7 +859,7 @@ async function startServer() {
     console.log("Running in PRODUCTION mode");
     app.use(express.static("dist"));
     app.get("*", (req, res) => {
-      res.sendFile("dist/vite.html", { root: "." });
+      res.sendFile("dist/app.html", { root: "." });
     });
   }
 

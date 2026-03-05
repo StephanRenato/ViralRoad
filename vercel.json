@@ -5,12 +5,8 @@
       "destination": "/api/:path*"
     },
     {
-      "source": "/assets/:path*",
-      "destination": "/dist/assets/:path*"
-    },
-    {
       "source": "/(.*)",
-      "destination": "/dist/vite.html"
+      "destination": "/app.html"
     }
   ]
 }
