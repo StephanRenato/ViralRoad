@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, PlanType, SubscriptionStatus, ProfileType } from './types';
 import { supabase } from './services/supabase';
@@ -7,24 +7,24 @@ import GlobalLoader from './components/GlobalLoader';
 import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 
-// Rotas Públicas & Institucionais
-import LandingPage from './pages/LandingPage';
-import Privacy from './pages/Privacy';
-import Terms from './pages/Terms';
-import Support from './pages/Support';
-import SalesPage from './pages/SalesPage';
+// Lazy Loading - Rotas Públicas & Institucionais
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Support = lazy(() => import('./pages/Support'));
+const SalesPage = lazy(() => import('./pages/SalesPage'));
 
-// Autenticação
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import UpdatePassword from './pages/UpdatePassword';
+// Lazy Loading - Autenticação
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
 
-// Aplicação
-import SuccessPage from './pages/SuccessPage';
+// Lazy Loading - Aplicação
+
+const SuccessPage = lazy(() => import('./pages/SuccessPage'));
 
 const App: React.FC = () => {
-  console.log("📱 App: Renderizando componente raiz...");
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -212,25 +212,18 @@ const App: React.FC = () => {
   useEffect(() => {
     if (theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
-  }, [theme]);
 
-  useEffect(() => {
-    console.log("🔐 App: Iniciando monitoramento de autenticação...");
-    
     // Verifica sessão inicial
-    supabase.auth.getSession().then(({ data: { session: initialSession } }: any) => {
-      if (initialSession?.user) {
-        console.log("👤 App: Sessão inicial detectada para:", initialSession.user.email);
-        setSession(initialSession);
-        fetchUserData(initialSession.user);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setSession(session);
+        fetchUserData(session.user);
       } else {
-        console.log("👤 App: Nenhuma sessão inicial encontrada.");
         setLoading(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, currentSession: any) => {
-      console.log(`🔔 App: Evento de Auth: ${event}`);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (currentSession?.user) {
         setSession(currentSession);
         if (!user || user.id !== currentSession.user.id) {
@@ -243,11 +236,8 @@ const App: React.FC = () => {
       }
     });
 
-    return () => {
-      console.log("🔐 App: Encerrando monitoramento de autenticação.");
-      subscription.unsubscribe();
-    };
-  }, []);
+    return () => subscription.unsubscribe();
+  }, [theme]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');

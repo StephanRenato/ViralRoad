@@ -847,19 +847,17 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    console.log(`[${new Date().toISOString()}] Running in DEVELOPMENT mode with Vite middleware`);
+    console.log("Running in DEVELOPMENT mode with Vite middleware");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
-      root: process.cwd(),
-      base: "/",
     });
     app.use(vite.middlewares);
   } else {
     console.log("Running in PRODUCTION mode");
     app.use(express.static("dist"));
     app.get("*", (req, res) => {
-      res.sendFile("dist/app.html", { root: "." });
+      res.sendFile("dist/index.html", { root: "." });
     });
   }
 
