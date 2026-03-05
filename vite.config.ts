@@ -14,6 +14,11 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: 'dist',
       chunkSizeWarningLimit: 1000,
+      rollupOptions: {
+        input: {
+          main: 'vite.html'
+        }
+      }
     },
   };
 });

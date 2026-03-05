@@ -10,7 +10,7 @@
     },
     {
       "source": "/(.*)",
-      "destination": "/dist/index.html"
+      "destination": "/dist/vite.html"
     }
   ]
 }
