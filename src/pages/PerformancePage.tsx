@@ -119,24 +119,6 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     setProgress(5);
 
     try {
-      // PRE-CHECK: Verificar OpenAI antes de gastar créditos Apify
-      if (!forceMock) {
-        addLog("Validando motores de IA...");
-        const healthRes = await fetch('/api/openai-health');
-        const healthData = await healthRes.json();
-        
-        if (healthData.status !== 'ok') {
-          const errorMsg = healthData.message || "Erro na validação da IA";
-          setUrlError(errorMsg);
-          addLog(`ERRO CRÍTICO: ${errorMsg}`);
-          setDiagnosticStatus({ gemini: healthData });
-          setAddingUrl(false);
-          setAnalyzingPlatform(null);
-          return; // Interrompe antes de chamar o Apify
-        }
-        addLog("IA Engine: OK");
-      }
-      
       setProgress(15);
       const platformKey = activePlatform.toLowerCase();
       addLog(`Conectando ao gateway social: ${activePlatform}...`);
@@ -469,11 +451,11 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                       </div>
                     )}
                     {diagnosticStatus && (
-                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${(!diagnosticStatus.apify || diagnosticStatus.apify.status === 'ok') && (!diagnosticStatus.openai || diagnosticStatus.openai.status === 'ok') && (!diagnosticStatus.supabase || diagnosticStatus.supabase.status === 'ok') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${(!diagnosticStatus.apify || diagnosticStatus.apify.status === 'ok') && (!diagnosticStatus.supabase || diagnosticStatus.supabase.status === 'ok') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                         <div className="font-black uppercase mb-1">Resultado do Diagnóstico:</div>
                         <pre className="whitespace-pre-wrap mb-3">{JSON.stringify(diagnosticStatus, null, 2)}</pre>
                         
-                        {(diagnosticStatus.canUseMock || (diagnosticStatus.openai && diagnosticStatus.openai.status !== 'ok') || (diagnosticStatus.supabase && diagnosticStatus.supabase.status !== 'ok')) && (
+                        {(diagnosticStatus.canUseMock || (diagnosticStatus.supabase && diagnosticStatus.supabase.status !== 'ok')) && (
                           <button 
                             onClick={() => handleConnect(newUrl, true)}
                             className="w-full py-2 bg-zinc-800 text-white rounded-xl font-black uppercase tracking-widest hover:bg-zinc-700 transition-all mt-2"

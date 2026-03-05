@@ -3,6 +3,7 @@ import React, { lazy, Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { User } from '../types';
 import { Loader2 } from 'lucide-react';
+import ChatWidget from '../components/ChatWidget';
 
 // Code Splitting - Sub-páginas do Dashboard
 // Mantemos o lazy loading para não pesar o bundle inicial, mas a UX será otimizada pelo Sidebar prefetch
@@ -13,8 +14,6 @@ const HooksLibraryPage = lazy(() => import('./HooksLibraryPage'));
 const ProfilePage = lazy(() => import('./ProfilePage'));
 const PerformancePage = lazy(() => import('./PerformancePage'));
 
-// Componentes pesados carregados sob demanda
-const ChatWidget = lazy(() => import('../components/ChatWidget').then(module => ({ default: module.ChatWidget })));
 
 // Loader leve e local para transições internas (não cobre a sidebar)
 const DashboardContentLoader = () => (
@@ -54,10 +53,8 @@ const Dashboard: React.FC<{
         </Routes>
       </Suspense>
       
-      {/* ChatWidget carregado com baixa prioridade */}
-      <Suspense fallback={null}>
-        <ChatWidget user={user} />
-      </Suspense>
+      {/* ChatWidget fixo */}
+      <ChatWidget user={user} />
     </div>
   );
 };

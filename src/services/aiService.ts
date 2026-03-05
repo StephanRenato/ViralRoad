@@ -1,27 +1,35 @@
+import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult } from "../types";
 
 const SYSTEM_PROMPT = `Você é o VIRAL ROAD, estrategista de elite. Responda em PT-BR.`;
 
-async function callAIProxy(model: string, prompt: string, config: any) {
+// Initialize Gemini API
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+async function callAI(modelName: string, prompt: string, config: any) {
   try {
-    const response = await fetch('/api/ia-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        contents: prompt,
-        config
-      })
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      config: {
+        systemInstruction: config.systemInstruction || SYSTEM_PROMPT,
+        responseMimeType: config.responseMimeType || "application/json",
+        responseSchema: config.responseSchema,
+        temperature: config.temperature || 1,
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || errorData.error || `Erro na API: ${response.status}`);
+    if (!response.text) {
+      throw new Error("Resposta vazia da IA");
     }
 
-    return await response.json();
+    try {
+      return JSON.parse(response.text);
+    } catch (e) {
+      return { text: response.text };
+    }
   } catch (error: any) {
-    console.error("Erro na geração de narrativas:", error);
+    console.error(`Erro na geração de conteúdo (${modelName}):`, error);
     throw error;
   }
 }
@@ -97,14 +105,14 @@ export async function generateNarratives(params: any) {
 
     Responda em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gpt-4o", prompt, {
+  const res = await callAI("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: "OBJECT",
+      type: Type.OBJECT,
       properties: {
-        analysis_insight: { type: "STRING" },
-        narratives: { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, description: { type: "STRING" } } } }
+        analysis_insight: { type: Type.STRING },
+        narratives: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, description: { type: Type.STRING } } } }
       }
     }
   });
@@ -125,12 +133,12 @@ export async function generateHeadlines(params: any) {
 
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gpt-4o", prompt, {
+  const res = await callAI("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: "OBJECT",
-      properties: { headlines: { type: "ARRAY", items: { type: "STRING" } } }
+      type: Type.OBJECT,
+      properties: { headlines: { type: Type.ARRAY, items: { type: Type.STRING } } }
     }
   });
   return normalizeAIKeys(res);
@@ -161,16 +169,16 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gpt-4o", prompt, {
+  const res = await callAI("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: "OBJECT",
+      type: Type.OBJECT,
       properties: {
-        script: { type: "STRING" },
-        caption: { type: "STRING" },
-        hashtags: { type: "STRING" },
-        creativeDirection: { type: "STRING" }
+        script: { type: Type.STRING },
+        caption: { type: Type.STRING },
+        hashtags: { type: Type.STRING },
+        creativeDirection: { type: Type.STRING }
       }
     }
   });
@@ -207,41 +215,41 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         IMPORTANTE: Você é um consultor de R$ 10.000/hora. Seja extremamente específico, tático e direto. Não use placeholders. Use os dados reais fornecidos para embasar sua estratégia.
     `;
 
-    return await callAIProxy("gpt-4o", prompt, {
+    return await callAI("gemini-3.1-pro-preview", prompt, {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
-            type: "OBJECT",
+            type: Type.OBJECT,
             properties: {
                 results: {
-                    type: "ARRAY",
+                    type: Type.ARRAY,
                     items: {
-                        type: "OBJECT",
+                        type: Type.OBJECT,
                         properties: {
-                            profile_id: { type: "STRING" },
+                            profile_id: { type: Type.STRING },
                             analysis: {
-                                type: "OBJECT",
+                                type: Type.OBJECT,
                                 properties: {
-                                    viral_score: { type: "NUMBER" },
-                                    best_format: { type: "STRING" },
-                                    frequency_suggestion: { type: "STRING" },
-                                    content_pillars: { type: "ARRAY", items: { type: "STRING" } },
+                                    viral_score: { type: Type.NUMBER },
+                                    best_format: { type: Type.STRING },
+                                    frequency_suggestion: { type: Type.STRING },
+                                    content_pillars: { type: Type.ARRAY, items: { type: Type.STRING } },
                                     diagnostic: {
-                                        type: "OBJECT",
+                                        type: Type.OBJECT,
                                         properties: {
-                                            status_label: { type: "STRING" },
-                                            key_action_item: { type: "STRING" },
-                                            tone_audit: { type: "STRING" },
-                                            content_strategy_advice: { type: "STRING" },
-                                            visual_style: { type: "STRING" }
+                                            status_label: { type: Type.STRING },
+                                            key_action_item: { type: Type.STRING },
+                                            tone_audit: { type: Type.STRING },
+                                            content_strategy_advice: { type: Type.STRING },
+                                            visual_style: { type: Type.STRING }
                                         }
                                     },
                                     next_post_recommendation: {
-                                        type: "OBJECT",
+                                        type: Type.OBJECT,
                                         properties: {
-                                            format: { type: "STRING" },
-                                            topic: { type: "STRING" },
-                                            reason: { type: "STRING" }
+                                            format: { type: Type.STRING },
+                                            topic: { type: Type.STRING },
+                                            reason: { type: Type.STRING }
                                         }
                                     }
                                 }
@@ -268,15 +276,15 @@ export async function auditUserProfile(params: any) {
 
     Responda em PT-BR.
   `;
-  return await callAIProxy("gpt-4o", prompt, {
+  return await callAI("gemini-3-flash-preview", prompt, {
     responseMimeType: "application/json",
     responseSchema: {
-      type: "OBJECT",
+      type: Type.OBJECT,
       properties: {
-        score: { type: "NUMBER" },
-        market_status: { type: "STRING" },
-        verdict: { type: "STRING" },
-        tip: { type: "STRING" }
+        score: { type: Type.NUMBER },
+        market_status: { type: Type.STRING },
+        verdict: { type: Type.STRING },
+        tip: { type: Type.STRING }
       }
     }
   });
@@ -284,27 +292,27 @@ export async function auditUserProfile(params: any) {
 
 export async function generateHookSeedIdeas(params: any) {
     const prompt = `Temas virais para ${params.profileType}.`;
-    return await callAIProxy("gpt-4o", prompt, {
+    return await callAI("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
-        responseSchema: { type: "OBJECT", properties: { topics: { type: "ARRAY", items: { type: "STRING" } } } }
+        responseSchema: { type: Type.OBJECT, properties: { topics: { type: Type.ARRAY, items: { type: Type.STRING } } } }
     });
 }
 
 export async function generateHooksFromTopic(params: any) {
     const prompt = `Ganchos para: ${params.topic}.`;
-    return await callAIProxy("gpt-4o", prompt, {
+    return await callAI("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
         responseSchema: {
-            type: "OBJECT",
+            type: Type.OBJECT,
             properties: {
                 hooks: {
-                    type: "ARRAY",
+                    type: Type.ARRAY,
                     items: {
-                        type: "OBJECT",
+                        type: Type.OBJECT,
                         properties: {
-                            content: { type: "STRING" },
-                            viral_percentage: { type: "NUMBER" },
-                            explanation: { type: "STRING" }
+                            content: { type: Type.STRING },
+                            viral_percentage: { type: Type.NUMBER },
+                            explanation: { type: Type.STRING }
                         }
                     }
                 }

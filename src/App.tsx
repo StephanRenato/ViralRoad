@@ -4,6 +4,8 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, PlanType, SubscriptionStatus, ProfileType } from './types';
 import { supabase } from './services/supabase';
 import GlobalLoader from './components/GlobalLoader';
+import Sidebar from './components/Sidebar';
+import Dashboard from './pages/Dashboard';
 
 // Lazy Loading - Rotas Públicas & Institucionais
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -19,9 +21,8 @@ const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
 const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
 
 // Lazy Loading - Aplicação
-const Dashboard = lazy(() => import('./pages/Dashboard'));
+
 const SuccessPage = lazy(() => import('./pages/SuccessPage'));
-const Sidebar = lazy(() => import('./components/Sidebar'));
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);

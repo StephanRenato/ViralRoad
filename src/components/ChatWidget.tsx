@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Send, X, Zap, Paperclip, Image as ImageIcon, Mic, Loader2, User as UserIcon } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 import { User } from '../types';
 
 interface Message {
@@ -12,7 +13,9 @@ interface Message {
   };
 }
 
-export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+
+const ChatWidget = ({ user }: { user: User }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([
@@ -59,12 +62,11 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
     setIsTyping(true);
 
     try {
-      const contents = messages.map(m => ({
+      const history = messages.map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
       }));
 
-      // Adiciona a mensagem atual com anexo se houver
       const currentParts: any[] = [{ text: userMessage }];
       if (currentAttachment) {
         currentParts.push({
@@ -74,16 +76,12 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
           }
         });
       }
-      contents.push({ role: 'user', parts: currentParts });
 
-      const response = await fetch('/api/ia-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          contents,
-          config: {
-            systemInstruction: `Você é o Agente de Suporte Avançado da VIRAL ROAD. 
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [...history, { role: 'user', parts: currentParts }],
+        config: {
+          systemInstruction: `Você é o Agente de Suporte Avançado da VIRAL ROAD. 
             Responda de forma prestativa, inteligente e adaptada ao tom do usuário (${user.name}).
             
             CONHECIMENTO DO SISTEMA:
@@ -99,19 +97,17 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
             3. ESPECIALISTA HUMANO: Se o usuário quiser falar com Stephan Silva (CEO/Especialista), forneça este link: https://wa.me/message/FIHKA4ZOQIXCN1.
             4. Você entende imagens e áudios. Analise-os se enviados.
             5. Responda em no máximo 1 minuto (simulado pela interface).`,
-            temperature: 0.8,
-          }
-        })
+          temperature: 0.8,
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || errorData.error || "Erro na Engine Road");
+      if (!response.text) {
+        throw new Error("Resposta vazia da IA");
       }
 
-      const data = await response.json();
-      setMessages(prev => [...prev, { role: 'model', text: data.text || "A Engine Road encontrou uma instabilidade momentânea." }]);
+      setMessages(prev => [...prev, { role: 'model', text: response.text || "A Engine Road encontrou uma instabilidade momentânea." }]);
     } catch (error) {
+      console.error("Erro no ChatWidget:", error);
       setMessages(prev => [...prev, { role: 'model', text: "Erro de conexão com a Cloud Road." }]);
     } finally {
       setIsTyping(false);
@@ -201,3 +197,5 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
     </div>
   );
 };
+
+export default ChatWidget;

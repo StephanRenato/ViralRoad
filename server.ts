@@ -1,7 +1,6 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from "openai";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
@@ -73,6 +72,19 @@ async function startServer() {
   // Ping for connectivity test
   app.get("/api/ping", (req, res) => {
     res.send("pong");
+  });
+
+  // Gemini Health Check
+  app.get("/api/gemini-health", async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.json({ status: 'error', message: 'GEMINI_API_KEY não configurada' });
+      }
+      return res.json({ status: 'ok', message: 'Gemini API configurada no ambiente' });
+    } catch (error: any) {
+      return res.status(500).json({ status: 'error', message: error.message });
+    }
   });
 
   // Supabase Health Check
@@ -155,7 +167,6 @@ async function startServer() {
       SUPABASE_URL: SUPABASE_URL ? "SET" : "MISSING",
       SERVICE_ROLE_KEY: SERVICE_ROLE_KEY ? `SET (Length: ${SERVICE_ROLE_KEY.length})` : "MISSING",
       ANON_KEY: ANON_KEY ? `SET (Length: ${ANON_KEY.length})` : "MISSING",
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? "SET" : "MISSING",
       APIFY_TOKEN: APIFY_TOKEN ? "SET" : "MISSING",
       NODE_ENV: process.env.NODE_ENV
     });
@@ -817,108 +828,6 @@ async function startServer() {
     }
   });
 
-  // OpenAI IA Proxy Route
-  app.post("/api/ia-proxy", async (req, res) => {
-    console.log(`${new Date().toISOString()} | OpenAI IA Proxy Request received`);
-    try {
-      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
-      
-      if (!apiKey || apiKey.length < 10) {
-        console.error("OPENAI_API_KEY MISSING OR INVALID");
-        return res.status(401).json({ 
-          error: "OPENAI_KEY_MISSING", 
-          message: "A chave da API OpenAI (OPENAI_API_KEY) não foi configurada no servidor." 
-        });
-      }
-
-      const openai = new OpenAI({ apiKey });
-      const { contents, config, model } = req.body || {};
-
-      // If it's an image generation request (based on model or some flag)
-      if (model === 'gemini-2.5-flash-image' || model?.includes('image')) {
-        const prompt = typeof contents === 'string' ? contents : (contents?.parts?.[0]?.text || "Generate an icon");
-        const response = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: prompt,
-          n: 1,
-          size: "1024x1024",
-          response_format: "b64_json"
-        });
-
-        if (response.data && response.data[0] && response.data[0].b64_json) {
-          return res.status(200).json({ 
-            image: {
-              data: response.data[0].b64_json,
-              mimeType: "image/png"
-            }
-          });
-        }
-        throw new Error("Falha na geração da imagem: dados ausentes");
-      }
-
-      // Standard text generation
-      let prompt = typeof contents === 'string' ? contents : JSON.stringify(contents);
-      
-      // OpenAI requirement: prompt must contain 'json' if response_format is 'json_object'
-      const isJsonRequested = config?.responseMimeType === "application/json";
-      if (isJsonRequested && !prompt.toLowerCase().includes("json")) {
-        prompt += "\n\nResponda obrigatoriamente em formato JSON.";
-      }
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        response_format: isJsonRequested ? { type: "json_object" } : undefined
-      });
-
-      const rawText = completion.choices[0].message.content || '{}';
-      
-      let parsedData;
-      try {
-        parsedData = JSON.parse(rawText);
-      } catch (e) {
-        parsedData = { text: rawText };
-      }
-
-      return res.status(200).json(parsedData);
-    } catch (error: any) {
-      console.error("OpenAI Proxy Error:", error);
-      
-      return res.status(500).json({ 
-        error: "OPENAI_PROXY_ERROR", 
-        message: error.message || "Erro interno no processamento da IA." 
-      });
-    }
-  });
-
-  // OpenAI Health Route
-  app.get("/api/openai-health", async (req, res) => {
-    try {
-      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
-      if (!apiKey || apiKey.length < 10) {
-        return res.json({ status: "error", message: "Chave OpenAI ausente ou curta demais" });
-      }
-      
-      const openai = new OpenAI({ apiKey });
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 1
-      });
-      
-      if (response.choices[0].message.content) {
-        return res.json({ status: "ok", message: "OpenAI está operacional" });
-      }
-      return res.json({ status: "error", message: "Resposta vazia da OpenAI" });
-    } catch (error: any) {
-      console.error("OpenAI Health Error:", error);
-      return res.json({ 
-        status: "error", 
-        message: error.message || "Erro desconhecido"
-      });
-    }
-  });
-
   // Apify Health Route
   app.get("/api/apify-health", async (req, res) => {
     try {
@@ -933,42 +842,6 @@ async function startServer() {
       return res.json({ status: "error", message: "Token Apify inválido ou expirado" });
     } catch (error: any) {
       return res.json({ status: "error", message: error.message });
-    }
-  });
-
-  // Social Analyze Proxy Route (OpenAI version)
-  app.post("/api/social-analyze", async (req, res) => {
-    console.log(`${new Date().toISOString()} | Social Analyze Proxy Request received`);
-    try {
-      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
-      if (!apiKey || apiKey.length < 10) {
-        return res.status(401).json({ error: "OPENAI_KEY_MISSING", message: "A chave da API OpenAI não foi configurada." });
-      }
-
-      const openai = new OpenAI({ apiKey });
-      const { profiles, niche, specialization, realMetrics, objective, recentPosts } = req.body || {};
-
-      const metricsContext = realMetrics ? `
-        DADOS REAIS DE ENGAJAMENTO (@${realMetrics.handle}):
-        - Seguidores: ${realMetrics.followers}
-        - Média Likes: ${realMetrics.likes}
-        - Vídeos/Posts: ${realMetrics.posts}
-        - Taxa de Engajamento Calculada: ${realMetrics.engagement_rate}%
-      ` : "DADOS: Perfil ainda não analisado ou privado.";
-
-      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}. Responda obrigatoriamente em formato JSON com o campo "results" contendo um array de objetos com "profile_id" e "analysis" (viral_score, best_format, frequency_suggestion, content_pillars, diagnostic, next_post_recommendation).`;
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" }
-      });
-
-      const rawText = completion.choices[0].message.content || '{}';
-      return res.status(200).json(JSON.parse(rawText));
-    } catch (error: any) {
-      console.error("Social Analyze Proxy Error:", error);
-      return res.status(500).json({ error: error.message || "Internal Server Error" });
     }
   });
 
