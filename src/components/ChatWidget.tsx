@@ -13,7 +13,15 @@ interface Message {
   };
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const getApiKey = () => {
+  try {
+    return (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 const ChatWidget = ({ user }: { user: User }) => {
   const [isOpen, setIsOpen] = useState(false);

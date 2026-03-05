@@ -5,8 +5,12 @@
       "destination": "/api/:path*"
     },
     {
+      "source": "/assets/:path*",
+      "destination": "/dist/assets/:path*"
+    },
+    {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/dist/index.html"
     }
   ]
 }

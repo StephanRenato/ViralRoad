@@ -3,8 +3,17 @@ import { AnalysisResult } from "../types";
 
 const SYSTEM_PROMPT = `Você é o VIRAL ROAD, estrategista de elite. Responda em PT-BR.`;
 
-// Initialize Gemini API
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+// Initialize Gemini API safely for both browser and server environments
+const getApiKey = () => {
+  try {
+    // In Vite/Browser, process.env might be undefined
+    return (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || '';
+  } catch (e) {
+    return '';
+  }
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 async function callAI(modelName: string, prompt: string, config: any) {
   try {
