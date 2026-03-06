@@ -1,18 +1,18 @@
 
-import React, { lazy, Suspense } from 'react';
+import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { User } from '../types';
 import { Loader2 } from 'lucide-react';
 import ChatWidget from '../components/ChatWidget';
 
-// Code Splitting - Sub-páginas do Dashboard
-// Mantemos o lazy loading para não pesar o bundle inicial, mas a UX será otimizada pelo Sidebar prefetch
-const GeneratorPage = lazy(() => import('./GeneratorPage'));
-const RoadmapPage = lazy(() => import('./RoadmapPage'));
-const LibraryPage = lazy(() => import('./LibraryPage'));
-const HooksLibraryPage = lazy(() => import('./HooksLibraryPage'));
-const ProfilePage = lazy(() => import('./ProfilePage'));
-const PerformancePage = lazy(() => import('./PerformancePage'));
+// Sub-páginas do Dashboard
+const GeneratorPage = React.lazy(() => import('./GeneratorPage'));
+const RoadmapPage = React.lazy(() => import('./RoadmapPage'));
+const LibraryPage = React.lazy(() => import('./LibraryPage'));
+const HooksLibraryPage = React.lazy(() => import('./HooksLibraryPage'));
+const ProfilePage = React.lazy(() => import('./ProfilePage'));
+const PerformancePage = React.lazy(() => import('./PerformancePage'));
+const AnalyticsDashboard = React.lazy(() => import('./AnalyticsDashboard'));
 
 
 // Loader leve e local para transições internas (não cobre a sidebar)
@@ -49,6 +49,7 @@ const Dashboard: React.FC<{
           <Route path="/calendar" element={<RoadmapPage user={user} />} />
           <Route path="/hooks" element={<HooksLibraryPage user={user} />} />
           <Route path="/performance" element={<PerformancePage user={user} onRefreshUser={onRefreshUser} />} />
+          <Route path="/analytics" element={<AnalyticsDashboard user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} onLogout={onLogout} onOpenUpgrade={onOpenUpgrade} onRefreshUser={onRefreshUser} />} />
         </Routes>
       </Suspense>

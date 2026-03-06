@@ -1,6 +1,6 @@
 {
-  "name": "VIRAL ROAD",
-  "description": "Plataforma de IA para estrategistas de conteúdo e criadores digitais.",
+  "name": "ViralRoad Analytics",
+  "description": "Advanced content performance and user engagement analytics dashboard for digital creators.",
   "requestFramePermissions": [
     "microphone"
   ]
