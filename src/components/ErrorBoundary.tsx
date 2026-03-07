@@ -1,5 +1,4 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-// Viral Road Error Boundary Component
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
 
 interface Props {
@@ -14,12 +13,12 @@ interface State {
 class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
+    this.state = {
+      hasError: false,
+      error: null
+    };
     console.log("🛡️ ErrorBoundary: Ativado.");
   }
-  public state: State = {
-    hasError: false,
-    error: null
-  };
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };

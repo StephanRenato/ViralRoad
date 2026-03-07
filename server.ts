@@ -51,11 +51,19 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Log all requests for debugging
+  // Log relevant requests for debugging
   app.use((req, res, next) => {
-    if (req.url !== '/api/health' && req.url !== '/api/ping') {
-      console.log(`${new Date().toISOString()} | ${req.method} ${req.url}`);
-    }
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      const isApi = req.url.startsWith('/api/');
+      const isError = res.statusCode >= 400;
+      
+      // Only log API calls or errors to reduce noise and confusion
+      if ((isApi || isError) && req.url !== '/api/health' && req.url !== '/api/ping') {
+        console.log(`${new Date().toISOString()} | ${req.method} ${req.url} | ${res.statusCode} | ${duration}ms`);
+      }
+    });
     next();
   });
 
@@ -847,19 +855,17 @@ async function startServer() {
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
-    console.log(`[${new Date().toISOString()}] Running in DEVELOPMENT mode with Vite middleware`);
+    console.log("Running in DEVELOPMENT mode with Vite middleware");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
-      root: process.cwd(),
-      base: "/",
     });
     app.use(vite.middlewares);
   } else {
     console.log("Running in PRODUCTION mode");
     app.use(express.static("dist"));
     app.get("*", (req, res) => {
-      res.sendFile("dist/app.html", { root: "." });
+      res.sendFile("dist/index.html", { root: "." });
     });
   }
 
