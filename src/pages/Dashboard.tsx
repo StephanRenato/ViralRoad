@@ -6,12 +6,13 @@ import { Loader2 } from 'lucide-react';
 import ChatWidget from '../components/ChatWidget';
 
 // Sub-páginas do Dashboard
-import GeneratorPage from './GeneratorPage';
-import RoadmapPage from './RoadmapPage';
-import LibraryPage from './LibraryPage';
-import HooksLibraryPage from './HooksLibraryPage';
-import ProfilePage from './ProfilePage';
-import PerformancePage from './PerformancePage';
+const GeneratorPage = React.lazy(() => import('./GeneratorPage'));
+const RoadmapPage = React.lazy(() => import('./RoadmapPage'));
+const LibraryPage = React.lazy(() => import('./LibraryPage'));
+const HooksLibraryPage = React.lazy(() => import('./HooksLibraryPage'));
+const ProfilePage = React.lazy(() => import('./ProfilePage'));
+const PerformancePage = React.lazy(() => import('./PerformancePage'));
+const AnalyticsDashboard = React.lazy(() => import('./AnalyticsDashboard'));
 
 
 // Loader leve e local para transições internas (não cobre a sidebar)
@@ -48,6 +49,7 @@ const Dashboard: React.FC<{
           <Route path="/calendar" element={<RoadmapPage user={user} />} />
           <Route path="/hooks" element={<HooksLibraryPage user={user} />} />
           <Route path="/performance" element={<PerformancePage user={user} onRefreshUser={onRefreshUser} />} />
+          <Route path="/analytics" element={<AnalyticsDashboard user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} onLogout={onLogout} onOpenUpgrade={onOpenUpgrade} onRefreshUser={onRefreshUser} />} />
         </Routes>
       </Suspense>
