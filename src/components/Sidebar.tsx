@@ -15,7 +15,7 @@ import {
   BarChart3,
   KanbanSquare,
   Coins,
-  TrendingUp
+  Activity
 } from 'lucide-react';
 import { User, PlanType } from '../types';
 import { supabase } from '../services/supabase';
@@ -75,7 +75,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
 
   const menuItems = [
     { name: 'GERADOR', path: '/dashboard', icon: Sparkles },
-    { name: 'ANALYTICS', path: '/dashboard/analytics', icon: TrendingUp },
     { name: 'PERFORMANCE', path: '/dashboard/performance', icon: BarChart3 },
     { name: 'ACERVO', path: '/dashboard/library', icon: Library },
     { name: 'CALENDÁRIO', path: '/dashboard/calendar', icon: Calendar },
@@ -97,9 +96,6 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
           break;
         case '/dashboard/performance':
           import('../pages/PerformancePage');
-          break;
-        case '/dashboard/analytics':
-          import('../pages/AnalyticsDashboard');
           break;
         case '/dashboard/library':
           import('../pages/LibraryPage');
@@ -161,7 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
                   ? 'bg-red-500/10 text-red-500 border-red-500/20' 
                   : 'bg-zinc-500/10 text-zinc-500 border-zinc-500/20'
                 }`}>
-                  <Zap size={8} className={iaStatus === 'checking' ? 'animate-pulse' : ''} />
+                  <Activity size={8} className={iaStatus === 'checking' ? 'animate-pulse' : ''} />
                   IA: {iaStatus === 'ok' ? 'CONECTADA' : iaStatus === 'error' ? 'OFFLINE' : 'VERIFICANDO...'}
                 </span>
               </div>
