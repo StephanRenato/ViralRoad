@@ -195,6 +195,7 @@ export interface User {
   currentPlan?: PlanType;
   usedBlueprints?: number;
   monthlyLimit?: number;
+  isUnlimited?: boolean;
   notificationsAiDaily?: boolean;
   notificationsEngagement?: boolean;
   socialProfiles?: SocialProfile[];

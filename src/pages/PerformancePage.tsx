@@ -50,6 +50,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const [currentTip, setCurrentTip] = useState(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [localProfiles, setLocalProfiles] = useState<SocialProfile[]>(user.socialProfiles || []);
+  const isLimitReached = !user.isUnlimited && (user.usedBlueprints || 0) >= (user.monthlyLimit || 100);
 
   useEffect(() => {
     if (user.socialProfiles) {
@@ -82,6 +83,11 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     const urlToUse = urlOverride || newUrl;
     if (!urlToUse) return;
     
+    if (isLimitReached) {
+      setUrlError("Você atingiu seu limite mensal de gerações. Faça upgrade para o plano PRO para continuar.");
+      return;
+    }
+
     setDiagnosticStatus(null);
     setUrlError('');
 
@@ -221,6 +227,13 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       onRefreshUser();
       setProgress(100);
       addLog(`Relatório gerado com sucesso.`);
+
+      // Increment usage in background
+      fetch('/api/db/usage/increment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      }).catch(err => console.error("Erro ao incrementar uso:", err));
 
     } catch (e: any) {
       console.error("Erro na análise:", e);

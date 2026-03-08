@@ -24,6 +24,17 @@ import UpdatePassword from './pages/UpdatePassword';
 // Aplicação
 import SuccessPage from './pages/SuccessPage';
 
+const ProtectedRoute: React.FC<{ 
+  session: any, 
+  user: User | null, 
+  loading: boolean, 
+  children: React.ReactNode 
+}> = ({ session, user, loading, children }) => {
+  if (loading) return <GlobalLoader />;
+  if (!session || !user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
+
 const App: React.FC = () => {
   console.log("📱 App: Renderizando componente raiz...");
   const [user, setUser] = useState<User | null>(null);
@@ -62,7 +73,7 @@ const App: React.FC = () => {
     let finalUsage = usage;
     if (!usage) {
       const initialPlan = isSpecialUser ? PlanType.Pro : PlanType.Starter;
-      const initialLimit = isSpecialUser ? 999999 : 5;
+      const initialLimit = isSpecialUser ? 999999 : 100; // Alterado para 100 conforme solicitado
       
       finalUsage = {
         user_id: authUser.id,
@@ -71,6 +82,9 @@ const App: React.FC = () => {
         used_this_month: 0
       };
     }
+
+    const currentPlan = isSpecialUser ? PlanType.Pro : (finalUsage?.plan as PlanType || PlanType.Starter);
+    const monthlyLimit = isSpecialUser ? 999999 : (currentPlan === PlanType.Pro ? 999999 : (finalUsage?.monthly_limit || 100));
 
     // Extração segura de configurações (suporte a JSON e colunas planas) + Fallback para metadata
     const dbSettings = profile?.settings;
@@ -98,10 +112,11 @@ const App: React.FC = () => {
       profileType: safeProfileType,
       specialization: safeSpecialization,
       avatarUrl: profile?.avatar_url || authUser.user_metadata?.avatar_url,
-      currentPlan: isSpecialUser ? PlanType.Pro : (finalUsage?.plan as PlanType || PlanType.Starter),
+      currentPlan,
       subscriptionStatus: isSpecialUser ? SubscriptionStatus.Active : ((profile?.subscription_status as SubscriptionStatus) || SubscriptionStatus.None),
       usedBlueprints: finalUsage?.used_this_month || 0,
-      monthlyLimit: isSpecialUser ? 999999 : (finalUsage?.monthly_limit || 5),
+      monthlyLimit,
+      isUnlimited: currentPlan === PlanType.Pro || isSpecialUser,
       
       // Novos campos essenciais para o ProfilePage
       socialProfiles: safeSocialProfiles,
@@ -276,13 +291,17 @@ const App: React.FC = () => {
             <Route path="/update-password" element={<UpdatePassword />} />
             
             {/* Rotas Protegidas */}
-            <Route path="/success" element={session && user ? <SuccessPage user={user} onRefresh={async () => { await fetchUserData(session.user); }} /> : <Navigate to="/login" />} />
+            <Route path="/success" element={
+              <ProtectedRoute session={session} user={user} loading={loading}>
+                <SuccessPage user={user!} onRefresh={async () => { await fetchUserData(session.user); }} />
+              </ProtectedRoute>
+            } />
             
             <Route path="/dashboard/*" element={
-              session && user ? (
+              <ProtectedRoute session={session} user={user} loading={loading}>
                 <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
                   <Sidebar 
-                    user={user} 
+                    user={user!} 
                     theme={theme} 
                     onToggleTheme={toggleTheme} 
                     onLogout={handleLogout} 
@@ -290,7 +309,7 @@ const App: React.FC = () => {
                   />
                   <main className="flex-1 overflow-auto scroll-smooth-container relative">
                      <Dashboard 
-                      user={user} 
+                      user={user!} 
                       onLogout={handleLogout} 
                       showUpgrade={showUpgradeModal} 
                       onCloseUpgrade={() => setShowUpgradeModal(false)} 
@@ -299,7 +318,7 @@ const App: React.FC = () => {
                     />
                   </main>
                 </div>
-              ) : <Navigate to="/login" />
+              </ProtectedRoute>
             } />
             
             {/* Fallback 404 */}

@@ -47,7 +47,7 @@ const Dashboard: React.FC<{
           <Route path="/" element={<GeneratorPage user={user} onRefreshUser={onRefreshUser} />} />
           <Route path="/library" element={<LibraryPage user={user} />} />
           <Route path="/calendar" element={<RoadmapPage user={user} />} />
-          <Route path="/hooks" element={<HooksLibraryPage user={user} />} />
+          <Route path="/hooks" element={<HooksLibraryPage user={user} onRefreshUser={onRefreshUser} />} />
           <Route path="/performance" element={<PerformancePage user={user} onRefreshUser={onRefreshUser} />} />
           <Route path="/analytics" element={<AnalyticsDashboard user={user} />} />
           <Route path="/profile" element={<ProfilePage user={user} onLogout={onLogout} onOpenUpgrade={onOpenUpgrade} onRefreshUser={onRefreshUser} />} />

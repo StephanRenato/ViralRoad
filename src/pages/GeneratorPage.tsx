@@ -96,7 +96,7 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
     specialization: user.specialization || 'Geral'
   });
 
-  const isLimitReached = !user.isUnlimited && (user.usedBlueprints || 0) >= (user.monthlyLimit || 5);
+  const isLimitReached = !user.isUnlimited && (user.usedBlueprints || 0) >= (user.monthlyLimit || 100);
 
   const handleRandomize = () => {
     const types = Object.values(ProfileType);
@@ -118,6 +118,11 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
       return;
     }
 
+    if (isLimitReached) {
+      setSaveError("Você atingiu seu limite mensal de gerações. Faça upgrade para o plano PRO para continuar.");
+      return;
+    }
+
     setLoading(true);
     setSaveError(null);
     
@@ -130,6 +135,16 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
       
       setRoadStrategy(res);
       setStep(4); // Go straight to result view
+
+      // Increment usage in background
+      fetch('/api/db/usage/increment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      }).then(() => {
+        if (onRefreshUser) onRefreshUser();
+      }).catch(err => console.error("Erro ao incrementar uso:", err));
+
     } catch (e: any) {
       console.error("Erro na geração da estratégia:", e);
       setSaveError(e.message || "Falha na Engine Road. Tente novamente em instantes.");
