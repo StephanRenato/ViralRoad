@@ -307,6 +307,55 @@ export async function generateHookSeedIdeas(params: any) {
     });
 }
 
+export async function generateRoadStrategy(params: { niche: string, objective: string, platform: string }) {
+  const prompt = `
+    Você é o VIRAL ROAD, estrategista de elite. Gere uma estratégia completa de conteúdo para:
+    Nicho: ${params.niche}
+    Objetivo: ${params.objective}
+    Plataforma: ${params.platform}
+
+    INSTRUÇÃO DE FORMATO:
+    Retorne um objeto JSON com as chaves EXATAMENTE assim:
+    {
+      "content_pillars": ["pilar 1", "pilar 2", "pilar 3"],
+      "viral_hooks": ["gancho 1", "gancho 2", "gancho 3", "gancho 4", "gancho 5"],
+      "post_ideas": ["ideia 1", "ideia 2", "ideia 3"],
+      "posting_frequency": "string",
+      "best_format": "string",
+      "video_script": "string"
+    }
+
+    Inclua:
+    1. Pilares de conteúdo (3 temas principais)
+    2. Hooks virais (5 ganchos magnéticos)
+    3. Ideias de posts (3 ideias detalhadas)
+    4. Frequência ideal de postagem
+    5. Melhor formato (Reels, Carrossel, etc)
+    6. Roteiro de vídeo completo (Script)
+
+    Responda tudo em Português do Brasil (PT-BR).
+  `;
+
+  const res = await callAI("gemini-3.1-pro-preview", prompt, {
+    systemInstruction: SYSTEM_PROMPT,
+    responseMimeType: "application/json",
+    responseSchema: {
+      type: Type.OBJECT,
+      properties: {
+        content_pillars: { type: Type.ARRAY, items: { type: Type.STRING } },
+        viral_hooks: { type: Type.ARRAY, items: { type: Type.STRING } },
+        post_ideas: { type: Type.ARRAY, items: { type: Type.STRING } },
+        posting_frequency: { type: Type.STRING },
+        best_format: { type: Type.STRING },
+        video_script: { type: Type.STRING }
+      },
+      required: ["content_pillars", "viral_hooks", "post_ideas", "posting_frequency", "best_format", "video_script"]
+    }
+  });
+
+  return normalizeAIKeys(res);
+}
+
 export async function generateHooksFromTopic(params: any) {
     const prompt = `Ganchos para: ${params.topic}.`;
     return await callAI("gemini-3-flash-preview", prompt, {

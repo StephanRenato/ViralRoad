@@ -692,6 +692,46 @@ async function startServer() {
     }
   });
 
+  // Road Strategies Proxy Routes
+  app.get("/api/db/road-strategies", async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { data, error } = await supabaseServer
+        .from('road_strategies')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Road Strategies Error:", error);
+      return res.status(500).json({ error: "DB_GET_ROAD_STRATEGIES_ERROR", message: error.message });
+    }
+  });
+
+  app.post("/api/db/road-strategies", async (req, res) => {
+    const { userId, payload } = req.body;
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!payload) return res.status(400).json({ error: "Missing payload" });
+
+    try {
+      const itemToInsert = { ...payload, user_id: userId };
+      const { data, error } = await supabaseServer
+        .from('road_strategies')
+        .insert(itemToInsert)
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Insert Road Strategy Error:", error);
+      return res.status(500).json({ error: "DB_INSERT_ROAD_STRATEGY_ERROR", message: error.message });
+    }
+  });
+
   // Usage Limits Proxy Routes
   app.get("/api/db/usage", async (req, res) => {
     const { userId } = req.query;
