@@ -13,15 +13,9 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyzeSocialStrategy, auditUserProfile } from '../services/aiService';
 import { 
-  fetchTikTokProfileData, 
-  fetchInstagramProfileData, 
-  fetchYouTubeProfileData, 
-  fetchKwaiProfileData,
-  fetchInstagramPosts,
-  getMockProfileData
+  fetchSocialProfile,
+  fetchInstagramPosts
 } from '../services/apifyService';
-import { normalizeProfile } from '../services/normalize';
-import { roadScore } from '../services/roadScore';
 import { supabase } from '../services/supabase';
 import { PlatformTab } from '../components/PerformancePlaceholders';
 
@@ -32,23 +26,6 @@ const LOADING_TIPS = [
   "💡 Reels com 7 segundos tendem a ter 20% mais retenção.",
   "⚡ Cruzando métricas de engajamento com padrões neurais..."
 ];
-
-async function analisarPerfil({ platform, url }: { platform: string, url: string }) {
-  const platformId = platform.toLowerCase();
-  try {
-      if (platformId === 'instagram') return (await fetchInstagramProfileData(url)).raw;
-      if (platformId === 'tiktok') return (await fetchTikTokProfileData(url)).raw;
-      if (platformId === 'youtube') return (await fetchYouTubeProfileData(url)).raw;
-      if (platformId === 'kwai') return (await fetchKwaiProfileData(url)).raw;
-      
-      // Se não for uma das plataformas acima, retorna erro
-      throw new Error(`Plataforma ${platform} não suportada para análise real.`);
-  } catch (error: any) {
-      console.error("Erro na análise real:", error);
-      // Repassa o erro para que o handleConnect capture e exiba na UI
-      throw error;
-  }
-}
 
 const parseFrequencyPattern = (text: string | undefined): boolean[] => {
     if (!text) return [true, false, true, false, true, false, false];
@@ -101,11 +78,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     }
   };
 
-  const handleConnect = async (urlOverride?: string, forceMock: boolean = false) => {
+  const handleConnect = async (urlOverride?: string) => {
     const urlToUse = urlOverride || newUrl;
     if (!urlToUse) return;
     
-    // Clear diagnostic on new attempt
     setDiagnosticStatus(null);
     setUrlError('');
 
@@ -115,25 +91,23 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     setProgress(0);
     setAuditResult(null);
 
-    addLog(`Iniciando Road Performance Engine v3.0...`);
+    addLog(`Iniciando Road Performance Engine v4.0...`);
     setProgress(5);
 
     try {
       setProgress(15);
-      const platformKey = activePlatform.toLowerCase();
       addLog(`Conectando ao gateway social: ${activePlatform}...`);
       
-      let rawResponse;
-      if (forceMock) {
-        addLog("MODO DEMO: Gerando dados táticos simulados...");
-        rawResponse = getMockProfileData(platformKey, { url: urlToUse });
-      } else {
-        rawResponse = await analisarPerfil({ platform: activePlatform, url: urlToUse });
-      }
-      setProgress(30);
+      // Chamada universal para dados reais
+      const result = await fetchSocialProfile(activePlatform, urlToUse);
+      const normalized = result; // Já vem normalizado do serviço
+      const rawResponse = result.raw;
+      
+      setProgress(40);
+      addLog(`Dados reais extraídos com sucesso: @${normalized.username}`);
       
       let postsData = [];
-      if (platformKey === 'instagram') {
+      if (activePlatform.toLowerCase() === 'instagram') {
         addLog(`Buscando métricas detalhadas de postagens (Feed + Reels)...`);
         try {
           postsData = await fetchInstagramPosts(urlToUse, 40);
@@ -144,19 +118,18 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         }
       }
       
-      setProgress(50);
-      addLog(`Dados brutos extraídos. Normalizando métricas...`);
- 
-      const normalized = normalizeProfile(rawResponse, platformKey);
-      const score = roadScore(normalized);
-      setProgress(70);
-      addLog(`Enviando contexto neural para OpenAI AI...`);
-
+      setProgress(60);
+      addLog(`Analisando engajamento e calculando Road Score...`);
+      
       const aiRes = await analyzeSocialStrategy({
         profiles: [{ id: activePlatform }],
         niche: user.profileType,
         specialization: user.specialization,
-        realMetrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
+        realMetrics: { 
+          ...normalized, 
+          engagement_rate: normalized.engagement_rate, 
+          handle: normalized.username 
+        },
         objective,
         recentPosts: postsData.map(p => p.caption).join(' | ').slice(0, 1000)
       });
@@ -168,21 +141,19 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       });
       setAuditResult(auditRes);
 
-      setProgress(100);
-      addLog(`Relatório gerado com sucesso.`);
+      setProgress(90);
+      addLog(`Finalizando estratégia neural...`);
 
       const analysisRaw = (aiRes.results && aiRes.results.length > 0) ? aiRes.results[0].analysis : {};
       
-      // Merge AI results with local metrics and audit results
       const mergedAnalysisAi = {
         ...analysisRaw,
-        viral_score: analysisRaw.viral_score || score.score,
+        viral_score: result.road_score,
         best_format: analysisRaw.best_format || "Identificando formato vencedor...",
         frequency_suggestion: analysisRaw.frequency_suggestion || "Calculando ritmo ideal...",
         diagnostic: { 
           ...(analysisRaw.diagnostic || {}), 
-          status_label: analysisRaw.diagnostic?.status_label || score.insight,
-          // Ensure these fields are present even if AI missed them
+          status_label: result.insight,
           key_action_item: analysisRaw.diagnostic?.key_action_item || "Aguardando diagnóstico neural...",
           tone_audit: analysisRaw.diagnostic?.tone_audit || "Analisando tom de voz...",
           content_strategy_advice: analysisRaw.diagnostic?.content_strategy_advice || "Construindo linha editorial...",
@@ -193,10 +164,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       };
 
       const minimalPostsData = postsData.map((p: any, idx: number) => {
-        // Prioritize displayUrl as it's usually the high-res cover for both photos and videos
-        // For Reels, Apify often provides displayUrl or thumbnailUrl
         const coverImage = p.displayUrl || p.thumbnailUrl || p.videoThumbnailUrl || (p.isVideo ? p.videoUrl : null);
-        
         return {
           displayUrl: coverImage,
           likesCount: p.likesCount || 0,
@@ -216,9 +184,16 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
         url: urlToUse,
         username: normalized.username,
         objective,
-        normalized_metrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
+        normalized_metrics: { 
+          ...normalized, 
+          engagement_rate: normalized.engagement_rate, 
+          handle: normalized.username,
+          avatar_url: normalized.avatar,
+          external_link: normalized.external_link,
+          verified: normalized.is_verified
+        },
         analysis_ai: mergedAnalysisAi,
-        raw_apify_data: null, // Strip raw data to prevent 520 errors
+        raw_apify_data: null,
         recent_posts: minimalPostsData,
         last_sync: new Date().toISOString()
       };
@@ -226,11 +201,10 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       const updated = [...localProfiles.filter(p => p.platform !== activePlatform), newProfile];
       setLocalProfiles(updated);
       
-      // 1. Tenta salvar via Proxy do Servidor (Mais resiliente contra erros de fetch no cliente)
+      // Sincronização
       try {
-        addLog("Sincronizando com a nuvem...");
         const { data: { session } } = await supabase.auth.getSession();
-        const proxyDbRes = await fetch('/api/db/upsert-profile', {
+        await fetch('/api/db/upsert-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -239,79 +213,20 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
             accessToken: session?.access_token
           })
         });
-        
-        if (!proxyDbRes.ok) {
-          const proxyError = await proxyDbRes.json().catch(() => ({ message: "Erro desconhecido no proxy" }));
-          throw new Error(proxyError.message || "Proxy de banco falhou");
-        }
-        addLog("Sincronização: OK");
-      } catch (proxyErr: any) {
-        console.warn("Falha no proxy de banco, tentando Supabase direto...", proxyErr);
-        addLog(`Aviso: Sincronização via proxy falhou (${proxyErr.message}). Tentando conexão direta...`);
-        
-        // Fallback: Tenta salvar no banco de dados direto (Cliente)
-        try {
-          const { error: dbError } = await supabase.from('profiles').upsert({ 
-            id: user.id,
-            social_profiles: updated,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'id' });
-          
-          if (dbError) throw dbError;
-          addLog("Sincronização Direta: OK");
-        } catch (dbError: any) {
-          console.error("Falha ao salvar performance no banco direto:", dbError);
-          addLog(`Erro Crítico: Falha ao salvar no banco (${dbError.message}). Usando backup local.`);
-          
-          // Fallback local imediato para persistência na sessão atual
-          localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(updated));
-          
-          // 2. Fallback para Metadata do Auth (Última tentativa de nuvem)
-          try {
-            const { error: authError } = await supabase.auth.updateUser({
-              data: { social_profiles: updated }
-            });
-            if (authError) throw authError;
-            addLog("Backup em Metadata: OK");
-          } catch (authError: any) {
-             console.error("Falha crítica ao salvar em metadata:", authError);
-             addLog("Erro: Não foi possível salvar em nenhuma camada de nuvem.");
-          }
-        }
+      } catch (proxyErr) {
+        console.warn("Falha na sincronização, salvando localmente.");
+        localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(updated));
       }
       
       onRefreshUser();
+      setProgress(100);
+      addLog(`Relatório gerado com sucesso.`);
 
     } catch (e: any) {
-      console.error("Erro capturado no handleConnect:", e);
-      let errorMsg = e.message || "Erro na análise.";
-      
-      if (e.name === 'TypeError' && errorMsg.includes('fetch')) {
-        errorMsg = "📡 ERRO DE CONEXÃO: Não foi possível contatar o servidor. Verifique se sua internet está estável ou se o servidor está em manutenção.";
-      } else if (errorMsg.includes("APIFY_CONFIGURATION_ERROR")) {
-        errorMsg = "⚠️ ERRO DE CONFIGURAÇÃO: O token do Apify não foi encontrado no servidor. Por favor, configure a variável APIFY_TOKEN.";
-      } else if (errorMsg.includes("APIFY_API_ERROR") || errorMsg.includes("match regular expression")) {
-        errorMsg = "❌ ERRO DE FORMATO: O link enviado não é válido para esta rede social. Certifique-se de que o link do Instagram comece com 'https://instagram.com/'.";
-      } else if (errorMsg.includes("504") || errorMsg.includes("TIMEOUT")) {
-        errorMsg = "⏳ TEMPO EXCEDIDO: A plataforma demorou muito para responder. Isso é comum em perfis grandes ou horários de pico. Tente novamente em instantes.";
-      } else if (errorMsg.includes("GEMINI_KEY_LEAKED") || errorMsg.includes("leaked")) {
-        errorMsg = "🚫 CHAVE VAZADA: Sua chave de API OpenAI foi reportada como vazada. Por favor, gere uma nova chave no painel da OpenAI e atualize o ambiente.";
-      } else if (errorMsg.includes("OPENAI_KEY_MISSING")) {
-        errorMsg = "🚫 CHAVE AUSENTE: A variável OPENAI_API_KEY não está configurada no servidor.";
-      } else if (errorMsg.includes("401") || errorMsg.includes("INVALID_API_KEY") || errorMsg.includes("OPENAI")) {
-        errorMsg = "🚫 CHAVE INVÁLIDA: Sua chave de API OpenAI foi rejeitada. Verifique se ela foi copiada corretamente.";
-      }
-      
+      console.error("Erro na análise:", e);
+      const errorMsg = e.message || "Falha ao buscar dados reais. Verifique o link e tente novamente.";
       setUrlError(errorMsg);
       addLog(`ERRO: ${errorMsg}`);
-      
-      // Oferece opção de usar dados demo se falhar
-      setDiagnosticStatus({
-        status: 'error',
-        message: errorMsg,
-        suggestion: "Deseja visualizar como o relatório ficaria com dados de demonstração?",
-        canUseMock: true
-      });
     } finally {
       setAddingUrl(false);
       setAnalyzingPlatform(null);
