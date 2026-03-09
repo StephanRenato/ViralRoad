@@ -13,15 +13,9 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { analyzeSocialStrategy, auditUserProfile } from '../services/aiService';
 import { 
-  fetchTikTokProfileData, 
-  fetchInstagramProfileData, 
-  fetchYouTubeProfileData, 
-  fetchKwaiProfileData,
-  fetchInstagramPosts,
-  getMockProfileData
+  fetchSocialProfile,
+  fetchInstagramPosts
 } from '../services/apifyService';
-import { normalizeProfile } from '../services/normalize';
-import { roadScore } from '../services/roadScore';
 import { supabase } from '../services/supabase';
 import { PlatformTab } from '../components/PerformancePlaceholders';
 
@@ -32,23 +26,6 @@ const LOADING_TIPS = [
   "💡 Reels com 7 segundos tendem a ter 20% mais retenção.",
   "⚡ Cruzando métricas de engajamento com padrões neurais..."
 ];
-
-async function analisarPerfil({ platform, url }: { platform: string, url: string }) {
-  const platformId = platform.toLowerCase();
-  try {
-      if (platformId === 'instagram') return (await fetchInstagramProfileData(url)).raw;
-      if (platformId === 'tiktok') return (await fetchTikTokProfileData(url)).raw;
-      if (platformId === 'youtube') return (await fetchYouTubeProfileData(url)).raw;
-      if (platformId === 'kwai') return (await fetchKwaiProfileData(url)).raw;
-      
-      // Se não for uma das plataformas acima, retorna erro
-      throw new Error(`Plataforma ${platform} não suportada para análise real.`);
-  } catch (error: any) {
-      console.error("Erro na análise real:", error);
-      // Repassa o erro para que o handleConnect capture e exiba na UI
-      throw error;
-  }
-}
 
 const parseFrequencyPattern = (text: string | undefined): boolean[] => {
     if (!text) return [true, false, true, false, true, false, false];
@@ -73,6 +50,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const [currentTip, setCurrentTip] = useState(0);
   const logsEndRef = useRef<HTMLDivElement>(null);
   const [localProfiles, setLocalProfiles] = useState<SocialProfile[]>(user.socialProfiles || []);
+  const isLimitReached = !user.isUnlimited && (user.usedBlueprints || 0) >= (user.monthlyLimit || 100);
 
   useEffect(() => {
     if (user.socialProfiles) {
@@ -101,11 +79,15 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     }
   };
 
-  const handleConnect = async (urlOverride?: string, forceMock: boolean = false) => {
+  const handleConnect = async (urlOverride?: string) => {
     const urlToUse = urlOverride || newUrl;
     if (!urlToUse) return;
     
-    // Clear diagnostic on new attempt
+    if (isLimitReached) {
+      setUrlError("Você atingiu seu limite mensal de gerações. Faça upgrade para o plano PRO para continuar.");
+      return;
+    }
+
     setDiagnosticStatus(null);
     setUrlError('');
 
@@ -115,66 +97,45 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
     setProgress(0);
     setAuditResult(null);
 
-    addLog(`Iniciando Road Performance Engine v3.0...`);
+    addLog(`Iniciando Road Performance Engine v4.0...`);
     setProgress(5);
 
     try {
-      // PRE-CHECK: Verificar OpenAI antes de gastar créditos Apify
-      if (!forceMock) {
-        addLog("Validando motores de IA...");
-        const healthRes = await fetch('/api/openai-health');
-        const healthData = await healthRes.json();
-        
-        if (healthData.status !== 'ok') {
-          const errorMsg = healthData.message || "Erro na validação da IA";
-          setUrlError(errorMsg);
-          addLog(`ERRO CRÍTICO: ${errorMsg}`);
-          setDiagnosticStatus({ gemini: healthData });
-          setAddingUrl(false);
-          setAnalyzingPlatform(null);
-          return; // Interrompe antes de chamar o Apify
-        }
-        addLog("IA Engine: OK");
-      }
-      
       setProgress(15);
-      const platformKey = activePlatform.toLowerCase();
       addLog(`Conectando ao gateway social: ${activePlatform}...`);
       
-      let rawResponse;
-      if (forceMock) {
-        addLog("MODO DEMO: Gerando dados táticos simulados...");
-        rawResponse = getMockProfileData(platformKey, { url: urlToUse });
-      } else {
-        rawResponse = await analisarPerfil({ platform: activePlatform, url: urlToUse });
-      }
-      setProgress(30);
+      // Chamada universal para dados reais
+      const result = await fetchSocialProfile(activePlatform, urlToUse);
+      const normalized = result; // Já vem normalizado do serviço
+      const rawResponse = result.raw;
+      
+      setProgress(40);
+      addLog(`Dados reais extraídos com sucesso: @${normalized.username}`);
       
       let postsData = [];
-      if (platformKey === 'instagram') {
-        addLog(`Buscando métricas detalhadas de postagens...`);
+      if (activePlatform.toLowerCase() === 'instagram') {
+        addLog(`Buscando métricas detalhadas de postagens (Feed + Reels)...`);
         try {
-          postsData = await fetchInstagramPosts(urlToUse, 10);
-          addLog(`${postsData.length} postagens recentes analisadas.`);
+          postsData = await fetchInstagramPosts(urlToUse, 40);
+          addLog(`${postsData.length} postagens recentes detectadas.`);
         } catch (postErr) {
           console.warn("Erro ao buscar posts:", postErr);
           addLog(`Aviso: Falha ao buscar posts detalhados.`);
         }
       }
       
-      setProgress(50);
-      addLog(`Dados brutos extraídos. Normalizando métricas...`);
- 
-      const normalized = normalizeProfile(rawResponse, platformKey);
-      const score = roadScore(normalized);
-      setProgress(70);
-      addLog(`Enviando contexto neural para OpenAI AI...`);
-
+      setProgress(60);
+      addLog(`Analisando engajamento e calculando Road Score...`);
+      
       const aiRes = await analyzeSocialStrategy({
         profiles: [{ id: activePlatform }],
         niche: user.profileType,
         specialization: user.specialization,
-        realMetrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
+        realMetrics: { 
+          ...normalized, 
+          engagement_rate: normalized.engagement_rate, 
+          handle: normalized.username 
+        },
         objective,
         recentPosts: postsData.map(p => p.caption).join(' | ').slice(0, 1000)
       });
@@ -186,35 +147,71 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       });
       setAuditResult(auditRes);
 
-      setProgress(100);
-      addLog(`Relatório gerado com sucesso.`);
+      setProgress(90);
+      addLog(`Finalizando estratégia neural...`);
 
-      const analysisRaw = aiRes.results?.[0]?.analysis || {};
+      const analysisRaw = (aiRes.results && aiRes.results.length > 0) ? aiRes.results[0].analysis : {};
+      
+      const mergedAnalysisAi = {
+        ...analysisRaw,
+        viral_score: result.road_score,
+        best_format: analysisRaw.best_format || "Identificando formato vencedor...",
+        frequency_suggestion: analysisRaw.frequency_suggestion || "Calculando ritmo ideal...",
+        diagnostic: { 
+          ...(analysisRaw.diagnostic || {}), 
+          status_label: result.insight,
+          key_action_item: analysisRaw.diagnostic?.key_action_item || "Aguardando diagnóstico neural...",
+          tone_audit: analysisRaw.diagnostic?.tone_audit || "Analisando tom de voz...",
+          content_strategy_advice: analysisRaw.diagnostic?.content_strategy_advice || "Construindo linha editorial...",
+          visual_style: analysisRaw.diagnostic?.visual_style || "Definindo estética visual..."
+        },
+        market_fit: auditRes || analysisRaw.market_fit,
+        audience_demographics: analysisRaw.audience_demographics || null,
+        content_pillars: analysisRaw.content_pillars || []
+      };
+
+      const minimalPostsData = postsData.map((p: any, idx: number) => {
+        const coverImage = p.displayUrl || p.thumbnailUrl || p.videoThumbnailUrl || (p.isVideo ? p.videoUrl : null);
+        return {
+          displayUrl: coverImage,
+          likesCount: p.likesCount || 0,
+          videoViewCount: p.videoViewCount || p.playCount || 0,
+          caption: (p.caption || '').substring(0, 500),
+          timestamp: p.timestamp,
+          url: p.url,
+          shortCode: p.shortCode,
+          id: p.id,
+          type: p.type || (p.isVideo || p.videoUrl ? 'Video' : 'Image'),
+          isVideo: p.isVideo || p.type === 'Video' || !!p.videoUrl || !!p.videoThumbnailUrl
+        };
+      }).slice(0, 40);
+
       const newProfile: SocialProfile = {
         platform: activePlatform,
         url: urlToUse,
         username: normalized.username,
         objective,
-        normalized_metrics: { ...normalized, engagement_rate: normalized.engagement, handle: normalized.username },
-        analysis_ai: {
-          ...analysisRaw,
-          viral_score: analysisRaw.viral_score || score.score,
-          diagnostic: { ...analysisRaw.diagnostic, status_label: score.insight },
-          market_fit: auditRes
+        normalized_metrics: { 
+          ...normalized, 
+          engagement_rate: normalized.engagement_rate, 
+          handle: normalized.username,
+          avatar_url: normalized.avatar,
+          external_link: normalized.external_link,
+          verified: normalized.is_verified
         },
-        raw_apify_data: rawResponse,
-        recent_posts: postsData,
+        analysis_ai: mergedAnalysisAi,
+        raw_apify_data: null,
+        recent_posts: minimalPostsData,
         last_sync: new Date().toISOString()
       };
 
       const updated = [...localProfiles.filter(p => p.platform !== activePlatform), newProfile];
       setLocalProfiles(updated);
       
-      // 1. Tenta salvar via Proxy do Servidor (Mais resiliente contra erros de fetch no cliente)
+      // Sincronização
       try {
-        addLog("Sincronizando com a nuvem...");
         const { data: { session } } = await supabase.auth.getSession();
-        const proxyDbRes = await fetch('/api/db/upsert-profile', {
+        await fetch('/api/db/upsert-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
@@ -223,79 +220,27 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
             accessToken: session?.access_token
           })
         });
-        
-        if (!proxyDbRes.ok) {
-          const proxyError = await proxyDbRes.json().catch(() => ({ message: "Erro desconhecido no proxy" }));
-          throw new Error(proxyError.message || "Proxy de banco falhou");
-        }
-        addLog("Sincronização: OK");
-      } catch (proxyErr: any) {
-        console.warn("Falha no proxy de banco, tentando Supabase direto...", proxyErr);
-        addLog(`Aviso: Sincronização via proxy falhou (${proxyErr.message}). Tentando conexão direta...`);
-        
-        // Fallback: Tenta salvar no banco de dados direto (Cliente)
-        try {
-          const { error: dbError } = await supabase.from('profiles').upsert({ 
-            id: user.id,
-            social_profiles: updated,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'id' });
-          
-          if (dbError) throw dbError;
-          addLog("Sincronização Direta: OK");
-        } catch (dbError: any) {
-          console.error("Falha ao salvar performance no banco direto:", dbError);
-          addLog(`Erro Crítico: Falha ao salvar no banco (${dbError.message}). Usando backup local.`);
-          
-          // Fallback local imediato para persistência na sessão atual
-          localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(updated));
-          
-          // 2. Fallback para Metadata do Auth (Última tentativa de nuvem)
-          try {
-            const { error: authError } = await supabase.auth.updateUser({
-              data: { social_profiles: updated }
-            });
-            if (authError) throw authError;
-            addLog("Backup em Metadata: OK");
-          } catch (authError: any) {
-             console.error("Falha crítica ao salvar em metadata:", authError);
-             addLog("Erro: Não foi possível salvar em nenhuma camada de nuvem.");
-          }
-        }
+      } catch (proxyErr) {
+        console.warn("Falha na sincronização, salvando localmente.");
+        localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(updated));
       }
       
       onRefreshUser();
+      setProgress(100);
+      addLog(`Relatório gerado com sucesso.`);
+
+      // Increment usage in background
+      fetch('/api/db/usage/increment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      }).catch(err => console.error("Erro ao incrementar uso:", err));
 
     } catch (e: any) {
-      console.error("Erro capturado no handleConnect:", e);
-      let errorMsg = e.message || "Erro na análise.";
-      
-      if (e.name === 'TypeError' && errorMsg.includes('fetch')) {
-        errorMsg = "📡 ERRO DE CONEXÃO: Não foi possível contatar o servidor. Verifique se sua internet está estável ou se o servidor está em manutenção.";
-      } else if (errorMsg.includes("APIFY_CONFIGURATION_ERROR")) {
-        errorMsg = "⚠️ ERRO DE CONFIGURAÇÃO: O token do Apify não foi encontrado no servidor. Por favor, configure a variável APIFY_TOKEN.";
-      } else if (errorMsg.includes("APIFY_API_ERROR") || errorMsg.includes("match regular expression")) {
-        errorMsg = "❌ ERRO DE FORMATO: O link enviado não é válido para esta rede social. Certifique-se de que o link do Instagram comece com 'https://instagram.com/'.";
-      } else if (errorMsg.includes("504") || errorMsg.includes("TIMEOUT")) {
-        errorMsg = "⏳ TEMPO EXCEDIDO: A plataforma demorou muito para responder. Isso é comum em perfis grandes ou horários de pico. Tente novamente em instantes.";
-      } else if (errorMsg.includes("GEMINI_KEY_LEAKED") || errorMsg.includes("leaked")) {
-        errorMsg = "🚫 CHAVE VAZADA: Sua chave de API OpenAI foi reportada como vazada. Por favor, gere uma nova chave no painel da OpenAI e atualize o ambiente.";
-      } else if (errorMsg.includes("OPENAI_KEY_MISSING")) {
-        errorMsg = "🚫 CHAVE AUSENTE: A variável OPENAI_API_KEY não está configurada no servidor.";
-      } else if (errorMsg.includes("401") || errorMsg.includes("INVALID_API_KEY") || errorMsg.includes("OPENAI")) {
-        errorMsg = "🚫 CHAVE INVÁLIDA: Sua chave de API OpenAI foi rejeitada. Verifique se ela foi copiada corretamente.";
-      }
-      
+      console.error("Erro na análise:", e);
+      const errorMsg = e.message || "Falha ao buscar dados reais. Verifique o link e tente novamente.";
       setUrlError(errorMsg);
       addLog(`ERRO: ${errorMsg}`);
-      
-      // Oferece opção de usar dados demo se falhar
-      setDiagnosticStatus({
-        status: 'error',
-        message: errorMsg,
-        suggestion: "Deseja visualizar como o relatório ficaria com dados de demonstração?",
-        canUseMock: true
-      });
     } finally {
       setAddingUrl(false);
       setAnalyzingPlatform(null);
@@ -355,7 +300,17 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
   const marketFit = analysis?.market_fit || auditResult;
 
   const [showAllPosts, setShowAllPosts] = useState(false);
-  const displayedPosts = currentProfile?.recent_posts ? (showAllPosts ? currentProfile.recent_posts : currentProfile.recent_posts.slice(0, 5)) : [];
+  const displayedPosts = currentProfile?.recent_posts ? (showAllPosts ? currentProfile.recent_posts : currentProfile.recent_posts.slice(0, 10)) : [];
+
+  const getInstagramUrl = (post: any) => {
+    if (post.url && post.url.includes('instagram.com')) return post.url;
+    if (post.shortCode) {
+      const prefix = post.isVideo ? 'reels' : 'p';
+      return `https://www.instagram.com/${prefix}/${post.shortCode}/`;
+    }
+    if (post.id && !post.id.includes('_')) return `https://www.instagram.com/p/${post.id}/`;
+    return '#';
+  };
 
   return (
     <div className="p-4 md:p-10 space-y-10 animate-in fade-in duration-500 pb-32 max-w-7xl mx-auto">
@@ -425,11 +380,11 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                       </div>
                     )}
                     {diagnosticStatus && (
-                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${(!diagnosticStatus.apify || diagnosticStatus.apify.status === 'ok') && (!diagnosticStatus.openai || diagnosticStatus.openai.status === 'ok') && (!diagnosticStatus.supabase || diagnosticStatus.supabase.status === 'ok') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
+                      <div className={`p-4 rounded-2xl border text-[10px] font-mono text-left ${(!diagnosticStatus.apify || diagnosticStatus.apify.status === 'ok') && (!diagnosticStatus.supabase || diagnosticStatus.supabase.status === 'ok') ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
                         <div className="font-black uppercase mb-1">Resultado do Diagnóstico:</div>
                         <pre className="whitespace-pre-wrap mb-3">{JSON.stringify(diagnosticStatus, null, 2)}</pre>
                         
-                        {(diagnosticStatus.canUseMock || (diagnosticStatus.openai && diagnosticStatus.openai.status !== 'ok') || (diagnosticStatus.supabase && diagnosticStatus.supabase.status !== 'ok')) && (
+                        {(diagnosticStatus.canUseMock || (diagnosticStatus.supabase && diagnosticStatus.supabase.status !== 'ok')) && (
                           <button 
                             onClick={() => handleConnect(newUrl, true)}
                             className="w-full py-2 bg-zinc-800 text-white rounded-xl font-black uppercase tracking-widest hover:bg-zinc-700 transition-all mt-2"
@@ -489,8 +444,8 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <div className="bg-zinc-900 text-white p-8 rounded-[3rem] shadow-xl border border-zinc-800 space-y-6 flex flex-col justify-center">
                     <div className="flex items-center gap-3"><div className="p-2 bg-yellow-400 rounded-xl text-black"><Target size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Estratégia Neural</h4></div>
                     <div className="space-y-4">
-                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-yellow-500 block mb-1">Melhor Formato</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.best_format}</p></div>
-                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-blue-400 block mb-1">Frequência Recomendada</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.frequency_suggestion}</p></div>
+                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-yellow-500 block mb-1">Melhor Formato</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.best_format || "Identificando formato vencedor..."}</p></div>
+                        <div className="bg-zinc-800/50 p-4 rounded-2xl border border-zinc-700/50"><span className="text-[8px] font-black uppercase text-blue-400 block mb-1">Frequência Recomendada</span><p className="text-xs font-bold italic text-white uppercase">{analysis?.frequency_suggestion || "Calculando ritmo ideal..."}</p></div>
                     </div>
                 </div>
              </div>
@@ -500,24 +455,125 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                 <div className="lg:col-span-2 bg-gradient-to-br from-yellow-400 to-yellow-500 p-8 rounded-[2.5rem] shadow-2xl space-y-6 text-black relative overflow-hidden group">
                    <div className="absolute top-0 right-0 w-40 h-40 bg-white/10 blur-[60px] pointer-events-none" />
                    <div className="flex items-center gap-3"><div className="p-2 bg-black text-yellow-400 rounded-xl"><Lightbulb size={20} /></div><h3 className="text-xl font-black italic uppercase tracking-tighter">Ação Imediata (Tático)</h3></div>
-                   <p className="text-2xl font-black italic uppercase leading-tight drop-shadow-sm">"{analysis?.diagnostic?.key_action_item}"</p>
+                   <p className="text-2xl font-black italic uppercase leading-tight drop-shadow-sm">"{analysis?.diagnostic?.key_action_item || "Aguardando diagnóstico neural..."}"</p>
                    <button onClick={() => navigate('/dashboard')} className="px-6 py-3 bg-black text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-zinc-800 transition-all shadow-xl flex items-center gap-2">EXECUTAR AGORA <ArrowRight size={14} /></button>
                 </div>
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-purple-500 mb-2"><Megaphone size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Auditoria de Tom</h4></div>
                     <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {analysis?.diagnostic?.tone_audit ? `"${analysis.diagnostic.tone_audit}"` : "Auditoria pendente..."}
+                      {analysis?.diagnostic?.tone_audit ? `"${analysis.diagnostic.tone_audit}"` : '"Analisando tom de voz..."'}
                     </p>
                 </div>
 
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
                    <div className="flex items-center gap-2 text-blue-500 mb-2"><BrainCircuit size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Linha Editorial</h4></div>
                     <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
-                      {analysis?.diagnostic?.content_strategy_advice ? `"${analysis.diagnostic.content_strategy_advice}"` : "Linha editorial pendente..."}
+                      {analysis?.diagnostic?.content_strategy_advice ? `"${analysis.diagnostic.content_strategy_advice}"` : '"Construindo linha editorial..."'}
                     </p>
                 </div>
              </div>
+
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-4">
+                   <div className="flex items-center gap-2 text-emerald-500 mb-2"><Eye size={18} /><h4 className="text-[10px] font-black uppercase tracking-[0.2em] italic">Estética Visual & Fotos</h4></div>
+                    <p className="text-xs font-bold italic text-zinc-700 dark:text-zinc-300 leading-relaxed">
+                      {analysis?.diagnostic?.visual_style ? `"${analysis.diagnostic.visual_style}"` : '"Definindo estética visual..."'}
+                    </p>
+                </div>
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-6">
+                   <div className="flex items-center gap-3"><div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Hash size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Pilares de Conteúdo</h4></div>
+                   <div className="flex flex-wrap gap-2">
+                       {analysis?.content_pillars && analysis.content_pillars.length > 0 ? (
+                         analysis.content_pillars.map((p, i) => (
+                           <span key={i} className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest italic">
+                             {p}
+                           </span>
+                         ))
+                       ) : (
+                         <span className="text-[10px] font-bold italic text-zinc-500">Definindo pilares estratégicos...</span>
+                       )}
+                   </div>
+                </div>
+             </div>
+
+             {/* Audience Demographics Section */}
+             {analysis?.audience_demographics && (
+               <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-8">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Users size={18} /></div>
+                    <h4 className="text-sm font-black uppercase italic tracking-widest">Demografia da Audiência (Estimativa IA)</h4>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
+                    {/* Age Groups */}
+                    <div className="space-y-4">
+                      <h5 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Faixa Etária</h5>
+                      <div className="space-y-3">
+                        {analysis.audience_demographics.age_groups.map((group, i) => (
+                          <div key={i} className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-bold italic">
+                              <span className="text-zinc-600 dark:text-zinc-400">{group.label}</span>
+                              <span className="text-zinc-900 dark:text-white">{group.percentage}%</span>
+                            </div>
+                            <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }} 
+                                animate={{ width: `${group.percentage}%` }} 
+                                className="h-full bg-yellow-400" 
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Gender */}
+                    <div className="space-y-4">
+                      <h5 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Gênero</h5>
+                      <div className="space-y-3">
+                        {analysis.audience_demographics.gender.map((item, i) => (
+                          <div key={i} className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-bold italic">
+                              <span className="text-zinc-600 dark:text-zinc-400">{item.label}</span>
+                              <span className="text-zinc-900 dark:text-white">{item.percentage}%</span>
+                            </div>
+                            <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }} 
+                                animate={{ width: `${item.percentage}%` }} 
+                                className="h-full bg-blue-400" 
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Locations */}
+                    <div className="space-y-4">
+                      <h5 className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Principais Localizações</h5>
+                      <div className="space-y-3">
+                        {analysis.audience_demographics.top_locations.map((loc, i) => (
+                          <div key={i} className="space-y-1">
+                            <div className="flex justify-between text-[10px] font-bold italic">
+                              <span className="text-zinc-600 dark:text-zinc-400">{loc.label}</span>
+                              <span className="text-zinc-900 dark:text-white">{loc.percentage}%</span>
+                            </div>
+                            <div className="h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
+                              <motion.div 
+                                initial={{ width: 0 }} 
+                                animate={{ width: `${loc.percentage}%` }} 
+                                className="h-full bg-emerald-400" 
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+               </div>
+             )}
 
              {currentProfile?.recent_posts && currentProfile.recent_posts.length > 0 && (
                <div className="space-y-6">
@@ -545,14 +601,32 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                             referrerPolicy="no-referrer"
                             onError={(e) => {
-                              // If the original URL fails, try to use a placeholder that looks like a social post
-                              e.currentTarget.src = `https://picsum.photos/seed/post-${idx}-${currentProfile.username}/400/400`;
-                              e.currentTarget.onerror = null;
+                              const target = e.currentTarget;
+                              // Try a different property if available
+                              if (post.thumbnailUrl && target.src !== post.thumbnailUrl) {
+                                target.src = post.thumbnailUrl;
+                              } else {
+                                target.src = `https://picsum.photos/seed/post-${idx}-${currentProfile.username}/400/400`;
+                                target.onerror = null;
+                              }
                             }}
                           />
+                          <div className="absolute top-3 right-3 z-10">
+                            {post.isVideo ? (
+                              <div className="bg-black/60 backdrop-blur-md p-1.5 rounded-lg text-white">
+                                <Clapperboard size={14} />
+                              </div>
+                            ) : (
+                              <div className="bg-black/60 backdrop-blur-md p-1.5 rounded-lg text-white">
+                                <Eye size={14} />
+                              </div>
+                            )}
+                          </div>
                           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white">
                             <div className="flex items-center gap-1 font-black text-xs"><Heart size={14} fill="currentColor" /> {post.likesCount || 0}</div>
-                            <div className="flex items-center gap-1 font-black text-xs"><Clapperboard size={14} fill="currentColor" /> {post.videoViewCount || 0}</div>
+                            {post.isVideo && (
+                              <div className="flex items-center gap-1 font-black text-xs"><Eye size={14} fill="currentColor" /> {post.videoViewCount || 0}</div>
+                            )}
                           </div>
                         </div>
                         <div className="p-4 space-y-2">
@@ -562,7 +636,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                               {post.timestamp ? new Date(post.timestamp).toLocaleDateString() : 'N/A'}
                             </span>
                             <a 
-                              href={post.url || (post.shortCode ? `https://www.instagram.com/p/${post.shortCode}/` : '#')} 
+                              href={getInstagramUrl(post)} 
                               target="_blank" 
                               rel="noopener noreferrer" 
                               className="text-yellow-500 hover:text-yellow-400 p-1 hover:bg-yellow-400/10 rounded-lg transition-colors"
@@ -578,7 +652,7 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                </div>
               )}
 
-             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+             <div className="grid grid-cols-1 md:grid-cols-1 gap-6">
                 {marketFit && (
                   <div className="bg-zinc-100/50 dark:bg-zinc-800/30 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] space-y-6">
                      <div className="flex items-center gap-3"><div className="p-2 bg-yellow-400/10 text-yellow-500 rounded-xl"><Stethoscope size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Market Fit Analysis</h4></div>
@@ -586,21 +660,6 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
                      <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border dark:border-zinc-700"><span className="text-[9px] font-black uppercase text-yellow-500 block mb-2">Tática de Diferenciação</span><p className="text-[11px] font-medium italic text-zinc-600 dark:text-zinc-400">{marketFit.tip}</p></div>
                   </div>
                 )}
-
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-8 rounded-[2.5rem] shadow-lg space-y-6">
-                   <div className="flex items-center gap-3"><div className="p-2 bg-zinc-100 dark:bg-zinc-800 text-zinc-500 rounded-xl"><Hash size={18} /></div><h4 className="text-sm font-black uppercase italic tracking-widest">Pilares de Conteúdo</h4></div>
-                   <div className="flex flex-wrap gap-2">
-                       {analysis?.content_pillars && analysis.content_pillars.length > 0 ? (
-                         analysis.content_pillars.map((p, i) => (
-                           <span key={i} className="px-4 py-2 bg-zinc-50 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest italic">
-                             {p}
-                           </span>
-                         ))
-                       ) : (
-                         <span className="text-[10px] font-bold italic text-zinc-500">Definindo pilares estratégicos...</span>
-                       )}
-                   </div>
-                </div>
              </div>
 
              {analysis?.next_post_recommendation && (

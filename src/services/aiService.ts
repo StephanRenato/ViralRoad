@@ -97,7 +97,7 @@ export async function generateNarratives(params: any) {
 
     Responda em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gpt-4o", prompt, {
+  const res = await callAIProxy("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -125,7 +125,7 @@ export async function generateHeadlines(params: any) {
 
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gpt-4o", prompt, {
+  const res = await callAIProxy("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -161,7 +161,7 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gpt-4o", prompt, {
+  const res = await callAIProxy("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -206,7 +206,7 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         IMPORTANTE: Não use placeholders. Seja específico para o nicho "${params.niche}".
     `;
 
-    return await callAIProxy("gpt-4o", prompt, {
+    return await callAIProxy("gemini-3-flash-preview", prompt, {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
@@ -266,7 +266,7 @@ export async function auditUserProfile(params: any) {
 
     Responda em PT-BR.
   `;
-  return await callAIProxy("gpt-4o", prompt, {
+  return await callAIProxy("gemini-3-flash-preview", prompt, {
     responseMimeType: "application/json",
     responseSchema: {
       type: "OBJECT",
@@ -282,7 +282,7 @@ export async function auditUserProfile(params: any) {
 
 export async function generateHookSeedIdeas(params: any) {
     const prompt = `Temas virais para ${params.profileType}.`;
-    return await callAIProxy("gpt-4o", prompt, {
+    return await callAIProxy("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
         responseSchema: { type: "OBJECT", properties: { topics: { type: "ARRAY", items: { type: "STRING" } } } }
     });
@@ -290,7 +290,7 @@ export async function generateHookSeedIdeas(params: any) {
 
 export async function generateHooksFromTopic(params: any) {
     const prompt = `Ganchos para: ${params.topic}.`;
-    return await callAIProxy("gpt-4o", prompt, {
+    return await callAIProxy("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
         responseSchema: {
             type: "OBJECT",

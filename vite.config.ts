@@ -15,12 +15,8 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
-        output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom', 'react-router-dom'],
-            utils: ['@supabase/supabase-js', 'lucide-react', 'framer-motion'],
-            ai: ['@google/genai']
-          }
+        input: {
+          main: 'app.html'
         }
       }
     },

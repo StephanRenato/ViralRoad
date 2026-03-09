@@ -148,6 +148,7 @@ export interface AnalysisAi {
     key_action_item: string;
     content_strategy_advice: string;
     tone_audit: string;
+    visual_style?: string;
   };
   next_post_recommendation?: {
     format: string;
@@ -159,6 +160,11 @@ export interface AnalysisAi {
     market_status: string;
     verdict: string;
     tip: string;
+  };
+  audience_demographics?: {
+    age_groups: { label: string; percentage: number }[];
+    gender: { label: string; percentage: number }[];
+    top_locations: { label: string; percentage: number }[];
   };
   tactics?: string[];
 }
@@ -194,6 +200,7 @@ export interface User {
   currentPlan?: PlanType;
   usedBlueprints?: number;
   monthlyLimit?: number;
+  isUnlimited?: boolean;
   notificationsAiDaily?: boolean;
   notificationsEngagement?: boolean;
   socialProfiles?: SocialProfile[];

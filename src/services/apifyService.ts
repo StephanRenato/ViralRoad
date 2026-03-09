@@ -1,160 +1,122 @@
-import { NormalizedMetrics } from '../types';
-import { normalizeProfile } from './normalize';
 
-const APIFY_TOKEN_FALLBACK = '';
+import { roadScore } from './roadScore';
+import { normalizeProfileData } from './normalizeProfile';
 
-const ACTOR_IDS = {
-  TIKTOK: 'clockworks~tiktok-scraper',
-  INSTAGRAM: 'apify~instagram-scraper',
-  YOUTUBE: 'streamers~youtube-channel-scraper',
-  KWAI: 'luan.r.dev~kwai-profile-scraper'
+const ACTOR_IDS: Record<string, string> = {
+  instagram: 'apify/instagram-scraper',
+  tiktok: 'clockworks/tiktok-scraper',
+  youtube: 'streamers/youtube-scraper',
+  kwai: 'luan.r.dev/kwai-profile-scraper'
 };
 
-async function callApifyActor(actorId: string, input: any): Promise<any> {
-  let platform = 'instagram';
-  if (actorId.includes('tiktok')) platform = 'tiktok';
-  else if (actorId.includes('youtube')) platform = 'youtube';
-  else if (actorId.includes('kwai')) platform = 'kwai';
-
-  const proxyResponse = await fetch('/api/apify-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ platform, payload: input })
-  });
-
-  if (proxyResponse.ok) {
-      const data = await proxyResponse.json();
-      return data.items || (Array.isArray(data) ? data : [data]);
+/**
+ * Extrai o username de uma URL de rede social
+ */
+function extractUsername(url: string, platform: string): string {
+  const cleanUrl = url.trim().replace(/\/$/, '');
+  const parts = cleanUrl.split('/');
+  
+  if (platform === 'tiktok') {
+    const lastPart = parts[parts.length - 1];
+    return lastPart.startsWith('@') ? lastPart.substring(1) : lastPart;
   }
   
-  const errorData = await proxyResponse.json().catch(() => ({}));
-  const errorMessage = errorData.message || errorData.error || `Falha ao buscar dados da plataforma: ${proxyResponse.status}`;
-  throw new Error(errorMessage);
+  return parts[parts.length - 1];
 }
 
-export const mapToAppMetrics = (normalized: any): NormalizedMetrics => {
-    return {
-        followers: normalized.followers,
-        following: normalized.following || 0,
-        likes: normalized.likes,
-        posts: normalized.posts,
-        views: normalized.views || null, 
-        engagement_rate: normalized.engagement || 0,
-        bio: normalized.bio,
-        avatar_url: normalized.avatar,
-        external_link: normalized.profile_url,
-        verified: normalized.is_verified || false,
-        is_private: normalized.is_private || false,
-        handle: normalized.username
-    };
-};
+/**
+ * Função universal para buscar dados reais de perfis sociais via Apify
+ */
+export async function fetchSocialProfile(platform: string, url: string) {
+  const platformId = platform.toLowerCase();
+  const actorId = ACTOR_IDS[platformId];
 
-const normalizeUrl = (url: string, platform: string): string => {
+  if (!actorId) {
+    throw new Error(`Plataforma ${platform} não suportada.`);
+  }
+
   let cleanUrl = url.trim();
   if (!cleanUrl.startsWith('http')) {
     cleanUrl = `https://${cleanUrl}`;
   }
 
-  if (platform === 'instagram' && !cleanUrl.includes('instagram.com')) {
-    const handle = cleanUrl.split('/').pop()?.replace('@', '');
-    return `https://www.instagram.com/${handle}/`;
+  const username = extractUsername(cleanUrl, platformId);
+
+  // Payload específico por plataforma conforme solicitado
+  let payload: any = {};
+  if (platformId === 'instagram') {
+    payload = { directUrls: [cleanUrl], resultsLimit: 200, resultsType: 'details' };
+  } else if (platformId === 'tiktok') {
+    payload = { profiles: [username], resultsPerPage: 100 };
+  } else if (platformId === 'youtube') {
+    payload = { startUrls: [{ url: cleanUrl }] };
+  } else if (platformId === 'kwai') {
+    payload = { startUrls: [{ url: cleanUrl }] };
   }
 
-  if (platform === 'tiktok' && !cleanUrl.includes('tiktok.com')) {
-    const handle = cleanUrl.split('/').pop()?.replace('@', '');
-    return `https://www.tiktok.com/@${handle}`;
+  try {
+    const response = await fetch('/api/apify-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ platform: platformId, payload })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Erro ao acessar API (${response.status})`);
+    }
+
+    const data = await response.json();
+    const items = data.items || (Array.isArray(data) ? data : [data]);
+    
+    if (!items || items.length === 0) {
+      throw new Error("Nenhum dado encontrado para este perfil. Verifique se o link está correto.");
+    }
+
+    const rawData = items[0];
+    const normalized = normalizeProfileData(rawData, platformId);
+    const scoreData = roadScore(normalized);
+
+    return {
+      ...normalized,
+      road_score: scoreData.score,
+      insight: scoreData.insight,
+      raw: rawData
+    };
+  } catch (error: any) {
+    console.error(`Error fetching ${platform} profile:`, error);
+    throw new Error(error.message || "Falha na comunicação com os servidores de dados.");
   }
-
-  return cleanUrl;
-};
-
-export async function fetchInstagramProfileData(url: string) {
-  const normalizedUrl = normalizeUrl(url, 'instagram');
-  const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { directUrls: [normalizedUrl], resultsLimit: 1, resultsType: 'details' });
-  const normalized = normalizeProfile(items, "instagram");
-  return { normalized: mapToAppMetrics(normalized), raw: items[0] };
 }
 
-export async function fetchInstagramPosts(url: string, limit: number = 20) {
-  const normalizedUrl = normalizeUrl(url, 'instagram');
-  const items = await callApifyActor(ACTOR_IDS.INSTAGRAM, { 
-    directUrls: [normalizedUrl], 
+/**
+ * Mantido para compatibilidade com análise de posts específicos do Instagram
+ */
+export async function fetchInstagramPosts(url: string, limit: number = 40) {
+  const payload = { 
+    directUrls: [url], 
     resultsType: 'posts', 
     resultsLimit: limit,
-    addParentData: false
+    searchType: 'user',
+    addParentData: false,
+    includeReels: true,
+    includeVideos: true,
+  };
+
+  const response = await fetch('/api/apify-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ platform: 'instagram', payload })
   });
-  return items;
-}
 
-export async function fetchTikTokProfileData(url: string) {
-  const normalizedUrl = normalizeUrl(url, 'tiktok');
+  if (!response.ok) throw new Error("Falha ao buscar posts do Instagram.");
   
-  // Robust username extraction from normalized URL
-  let username = '';
-  const match = normalizedUrl.match(/@([a-zA-Z0-9._-]+)/);
-  if (match) {
-    username = match[1];
-  } else {
-    username = normalizedUrl.split('/').pop()?.replace('@', '').split('?')[0] || '';
-  }
-
-  if (!username) throw new Error("Não foi possível extrair o usuário da URL do TikTok.");
-
-  const items = await callApifyActor(ACTOR_IDS.TIKTOK, { profiles: [username], resultsPerPage: 1 });
-  const normalized = normalizeProfile(items, "tiktok");
-  return { normalized: mapToAppMetrics(normalized), raw: items[0] };
-}
-
-export async function fetchYouTubeProfileData(url: string) {
-    const items = await callApifyActor(ACTOR_IDS.YOUTUBE, { startUrls: [{ url }], maxResults: 1 });
-    const normalized = normalizeProfile(items, "youtube");
-    return { normalized: mapToAppMetrics(normalized), raw: items[0] };
-}
-
-export function getMockProfileData(platform: string, input: any) {
-    // Return data in a format that normalizeProfile can handle as "raw"
-    if (platform === 'instagram') {
-        return {
-            _isMock: true,
-            username: input.url?.split('/').pop() || 'user',
-            fullName: "Estrategista Road",
-            followersCount: 12500,
-            followsCount: 430,
-            postsCount: 84,
-            engagementRate: 4.2,
-            profilePicUrl: "https://picsum.photos/200",
-            biography: "Perfil em análise tática pelo Road Engine.",
-            url: input.url,
-            verified: false,
-            private: false
-        };
-    }
-    if (platform === 'tiktok') {
-        return {
-            _isMock: true,
-            authorMeta: {
-                name: input.url?.split('@').pop() || 'user',
-                nickName: "Viral Creator",
-                fans: 45000,
-                heart: 154000,
-                video: 120,
-                signature: "Criando conteúdo viral.",
-                avatar: "https://picsum.photos/200"
-            }
-        };
-    }
-    // Default mock
-    return {
-        _isMock: true,
-        username: 'user',
-        followersCount: 1000,
-        engagementRate: 3.0,
-        url: input.url
-    };
-}
-
-export async function fetchKwaiProfileData(url: string) {
-    const items = await callApifyActor(ACTOR_IDS.KWAI, { startUrls: [{ url }] });
-    const normalized = normalizeProfile(items, "kwai");
-    return { normalized: mapToAppMetrics(normalized), raw: items[0] };
+  const data = await response.json();
+  const items = data.items || (Array.isArray(data) ? data : [data]);
+  
+  return items.sort((a: any, b: any) => {
+    const dateA = new Date(a.timestamp || 0).getTime();
+    const dateB = new Date(b.timestamp || 0).getTime();
+    return dateB - dateA;
+  });
 }

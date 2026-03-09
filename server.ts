@@ -2,6 +2,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from '@supabase/supabase-js';
 import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
@@ -733,101 +734,101 @@ async function startServer() {
     }
   });
 
-  // OpenAI IA Proxy Route
+  // Gemini IA Proxy Route
   app.post("/api/ia-proxy", async (req, res) => {
-    console.log(`${new Date().toISOString()} | OpenAI IA Proxy Request received`);
+    console.log(`${new Date().toISOString()} | Gemini IA Proxy Request received`);
     try {
-      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+      const apiKey = (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '').trim();
       
       if (!apiKey || apiKey.length < 10) {
-        console.error("OPENAI_API_KEY MISSING OR INVALID");
+        console.error("GEMINI_API_KEY MISSING OR INVALID");
         return res.status(401).json({ 
-          error: "OPENAI_KEY_MISSING", 
-          message: "A chave da API OpenAI (OPENAI_API_KEY) não foi configurada no servidor." 
+          error: "GEMINI_KEY_MISSING", 
+          message: "A chave da API Gemini não foi configurada no servidor." 
         });
       }
 
-      const openai = new OpenAI({ apiKey });
+      const genAI = new GoogleGenAI({ apiKey });
       const { contents, config, model } = req.body || {};
-
-      // If it's an image generation request (based on model or some flag)
-      if (model === 'gemini-2.5-flash-image' || model?.includes('image')) {
-        const prompt = typeof contents === 'string' ? contents : (contents?.parts?.[0]?.text || "Generate an icon");
-        const response = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: prompt,
-          n: 1,
-          size: "1024x1024",
-          response_format: "b64_json"
-        });
-
-        if (response.data && response.data[0] && response.data[0].b64_json) {
-          return res.status(200).json({ 
-            image: {
-              data: response.data[0].b64_json,
-              mimeType: "image/png"
-            }
-          });
-        }
-        throw new Error("Falha na geração da imagem: dados ausentes");
-      }
-
-      // Standard text generation
-      let prompt = typeof contents === 'string' ? contents : JSON.stringify(contents);
       
-      // OpenAI requirement: prompt must contain 'json' if response_format is 'json_object'
-      const isJsonRequested = config?.responseMimeType === "application/json";
-      if (isJsonRequested && !prompt.toLowerCase().includes("json")) {
-        prompt += "\n\nResponda obrigatoriamente em formato JSON.";
+      const targetModel = model === 'gpt-4o' || !model ? "gemini-3-flash-preview" : model;
+
+      // If it's an image generation request
+      if (targetModel.includes('image')) {
+        // Fallback to OpenAI for images if needed, or handle Gemini image gen
+        // For now, let's keep the OpenAI image logic if they have a key
+        const openAIKey = (process.env.OPENAI_API_KEY || '').trim();
+        if (openAIKey) {
+          const openai = new OpenAI({ apiKey: openAIKey });
+          const prompt = typeof contents === 'string' ? contents : (contents?.parts?.[0]?.text || "Generate an icon");
+          const response = await openai.images.generate({
+            model: "dall-e-3",
+            prompt: prompt,
+            n: 1,
+            size: "1024x1024",
+            response_format: "b64_json"
+          });
+
+          if (response.data && response.data[0] && response.data[0].b64_json) {
+            return res.status(200).json({ 
+              image: {
+                data: response.data[0].b64_json,
+                mimeType: "image/png"
+              }
+            });
+          }
+        }
       }
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        response_format: isJsonRequested ? { type: "json_object" } : undefined
+      const response = await genAI.models.generateContent({
+        model: targetModel,
+        contents: typeof contents === 'string' ? { parts: [{ text: contents }] } : contents,
+        config: {
+          ...config,
+          responseMimeType: config?.responseMimeType || "application/json"
+        }
       });
 
-      const rawText = completion.choices[0].message.content || '{}';
+      const rawText = cleanJson(response.text || '{}');
       
       let parsedData;
       try {
         parsedData = JSON.parse(rawText);
       } catch (e) {
-        parsedData = { text: rawText };
+        parsedData = { text: response.text, raw: rawText };
       }
 
       return res.status(200).json(parsedData);
     } catch (error: any) {
-      console.error("OpenAI Proxy Error:", error);
+      console.error("Gemini Proxy Error:", error);
       
       return res.status(500).json({ 
-        error: "OPENAI_PROXY_ERROR", 
+        error: "GEMINI_PROXY_ERROR", 
         message: error.message || "Erro interno no processamento da IA." 
       });
     }
   });
 
-  // OpenAI Health Route
-  app.get("/api/openai-health", async (req, res) => {
+  // Gemini Health Route
+  app.get("/api/gemini-health", async (req, res) => {
     try {
-      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+      const apiKey = (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '').trim();
       if (!apiKey || apiKey.length < 10) {
-        return res.json({ status: "error", message: "Chave OpenAI ausente ou curta demais" });
+        return res.json({ status: "error", message: "Chave Gemini ausente ou curta demais" });
       }
       
-      const openai = new OpenAI({ apiKey });
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [{ role: "user", content: "ping" }],
-        max_tokens: 1
+      const genAI = new GoogleGenAI({ apiKey });
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: { parts: [{ text: "ping" }] }
       });
       
-      if (response.choices[0].message.content) {
-        return res.json({ status: "ok", message: "OpenAI está operacional" });
+      if (response.text) {
+        return res.json({ status: "ok", message: "Gemini está operacional" });
       }
-      return res.json({ status: "error", message: "Resposta vazia da OpenAI" });
+      return res.json({ status: "error", message: "Resposta vazia do Gemini" });
     } catch (error: any) {
-      console.error("OpenAI Health Error:", error);
+      console.error("Gemini Health Error:", error);
       return res.json({ 
         status: "error", 
         message: error.message || "Erro desconhecido"
@@ -852,16 +853,16 @@ async function startServer() {
     }
   });
 
-  // Social Analyze Proxy Route (OpenAI version)
+  // Social Analyze Proxy Route (Gemini version)
   app.post("/api/social-analyze", async (req, res) => {
     console.log(`${new Date().toISOString()} | Social Analyze Proxy Request received`);
     try {
-      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+      const apiKey = (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '').trim();
       if (!apiKey || apiKey.length < 10) {
-        return res.status(401).json({ error: "OPENAI_KEY_MISSING", message: "A chave da API OpenAI não foi configurada." });
+        return res.status(401).json({ error: "GEMINI_KEY_MISSING", message: "A chave da API Gemini não foi configurada." });
       }
 
-      const openai = new OpenAI({ apiKey });
+      const genAI = new GoogleGenAI({ apiKey });
       const { profiles, niche, specialization, realMetrics, objective, recentPosts } = req.body || {};
 
       const metricsContext = realMetrics ? `
@@ -874,13 +875,15 @@ async function startServer() {
 
       const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}. Responda obrigatoriamente em formato JSON com o campo "results" contendo um array de objetos com "profile_id" e "analysis" (viral_score, best_format, frequency_suggestion, content_pillars, diagnostic, next_post_recommendation).`;
 
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_object" }
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: { parts: [{ text: prompt }] },
+        config: {
+          responseMimeType: "application/json"
+        }
       });
 
-      const rawText = completion.choices[0].message.content || '{}';
+      const rawText = cleanJson(response.text || '{}');
       return res.status(200).json(JSON.parse(rawText));
     } catch (error: any) {
       console.error("Social Analyze Proxy Error:", error);

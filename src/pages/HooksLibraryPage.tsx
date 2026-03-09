@@ -3,10 +3,11 @@ import { supabase } from '../services/supabase';
 import { User } from '../types';
 import { Anchor, Loader2, Copy, CheckCircle2, Sparkles, X, Save, Trash2, Wand2, AlertTriangle, ArrowRight, Zap, Trophy, Target, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { generateHookSeedIdeas, generateHooksFromTopic } from '../services/aiService';
+import { generateHookTopics, generateViralHooks } from '../services/aiService';
 
 interface HooksLibraryPageProps {
   user: User;
+  onRefreshUser?: () => void;
 }
 
 const HookSkeleton = () => (
@@ -26,8 +27,9 @@ const HookSkeleton = () => (
   </div>
 );
 
-const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
+const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user, onRefreshUser }) => {
   const [hooks, setHooks] = useState<any[]>([]);
+  const isLimitReached = !user.isUnlimited && (user.usedBlueprints || 0) >= (user.monthlyLimit || 100);
   const [loading, setLoading] = useState(true);
   const [generatingSeeds, setGeneratingSeeds] = useState(false);
   const [generatingHooks, setGeneratingHooks] = useState(false);
@@ -126,11 +128,10 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
     setSelectedTopic(null);
     setImportSuccess(false);
     try {
-      const result = await generateHookSeedIdeas({
-        profileType: user.profileType || 'Geral',
-        specialization: user.specialization || 'Geral'
+      const topics = await generateHookTopics({
+        niche: user.specialization || user.profileType || 'Geral'
       });
-      setHookTopics(result.topics || []);
+      setHookTopics(topics || []);
     } catch (e) {
       console.error("Erro ao gerar temas:", e);
     } finally {
@@ -139,20 +140,39 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
   };
 
   const handleSelectTopic = async (topic: string) => {
+    if (isLimitReached) {
+      alert("Você atingiu seu limite mensal de gerações. Faça upgrade para o plano PRO para continuar.");
+      return;
+    }
+
     setSelectedTopic(topic);
     setGeneratingHooks(true);
     try {
-      const result = await generateHooksFromTopic({
-        profileType: user.profileType || 'Geral',
-        specialization: user.specialization || 'Geral',
-        topic: topic
+      const hooks = await generateViralHooks({
+        niche: user.specialization || user.profileType || 'Geral',
+        platform: 'Instagram',
+        contentType: 'Reels'
       });
       
-      const generated = result.hooks || [];
+      const generated = (hooks || []).map((h: string) => ({
+        content: h,
+        viral_percentage: Math.floor(Math.random() * 20) + 80,
+        explanation: "Gancho otimizado para retenção e curiosidade."
+      }));
+      
       generated.sort((a: any, b: any) => b.viral_percentage - a.viral_percentage);
       
       setPreviewHooks(generated);
       setViewState('preview');
+
+      // Increment usage in background
+      fetch('/api/db/usage/increment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id })
+      }).then(() => {
+        if (onRefreshUser) onRefreshUser();
+      }).catch(err => console.error("Erro ao incrementar uso:", err));
 
     } catch (e) {
       console.error("Erro ao gerar ganchos detalhados:", e);

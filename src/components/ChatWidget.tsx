@@ -80,7 +80,7 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'gpt-4o',
+          model: 'gemini-3-flash-preview',
           contents,
           config: {
             systemInstruction: `Você é o Agente de Suporte Avançado da VIRAL ROAD. 
