@@ -148,7 +148,6 @@ export interface AnalysisAi {
     key_action_item: string;
     content_strategy_advice: string;
     tone_audit: string;
-    visual_style?: string;
   };
   next_post_recommendation?: {
     format: string;
@@ -195,7 +194,6 @@ export interface User {
   currentPlan?: PlanType;
   usedBlueprints?: number;
   monthlyLimit?: number;
-  isUnlimited?: boolean;
   notificationsAiDaily?: boolean;
   notificationsEngagement?: boolean;
   socialProfiles?: SocialProfile[];

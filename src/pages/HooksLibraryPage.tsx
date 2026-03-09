@@ -7,7 +7,6 @@ import { generateHookSeedIdeas, generateHooksFromTopic } from '../services/aiSer
 
 interface HooksLibraryPageProps {
   user: User;
-  onRefreshUser?: () => void;
 }
 
 const HookSkeleton = () => (
@@ -27,9 +26,8 @@ const HookSkeleton = () => (
   </div>
 );
 
-const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user, onRefreshUser }) => {
+const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user }) => {
   const [hooks, setHooks] = useState<any[]>([]);
-  const isLimitReached = !user.isUnlimited && (user.usedBlueprints || 0) >= (user.monthlyLimit || 100);
   const [loading, setLoading] = useState(true);
   const [generatingSeeds, setGeneratingSeeds] = useState(false);
   const [generatingHooks, setGeneratingHooks] = useState(false);
@@ -141,11 +139,6 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user, onRefreshUser
   };
 
   const handleSelectTopic = async (topic: string) => {
-    if (isLimitReached) {
-      alert("Você atingiu seu limite mensal de gerações. Faça upgrade para o plano PRO para continuar.");
-      return;
-    }
-
     setSelectedTopic(topic);
     setGeneratingHooks(true);
     try {
@@ -160,15 +153,6 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user, onRefreshUser
       
       setPreviewHooks(generated);
       setViewState('preview');
-
-      // Increment usage in background
-      fetch('/api/db/usage/increment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id })
-      }).then(() => {
-        if (onRefreshUser) onRefreshUser();
-      }).catch(err => console.error("Erro ao incrementar uso:", err));
 
     } catch (e) {
       console.error("Erro ao gerar ganchos detalhados:", e);

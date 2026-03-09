@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from '@supabase/supabase-js';
+import OpenAI from "openai";
 import dotenv from "dotenv";
 import crypto from "crypto";
 
@@ -51,19 +52,11 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Log relevant requests for debugging
+  // Log all requests for debugging
   app.use((req, res, next) => {
-    const start = Date.now();
-    res.on('finish', () => {
-      const duration = Date.now() - start;
-      const isApi = req.url.startsWith('/api/');
-      const isError = res.statusCode >= 400;
-      
-      // Only log API calls or errors to reduce noise and confusion
-      if ((isApi || isError) && req.url !== '/api/health' && req.url !== '/api/ping') {
-        console.log(`${new Date().toISOString()} | ${req.method} ${req.url} | ${res.statusCode} | ${duration}ms`);
-      }
-    });
+    if (req.url !== '/api/health' && req.url !== '/api/ping') {
+      console.log(`${new Date().toISOString()} | ${req.method} ${req.url}`);
+    }
     next();
   });
 
@@ -80,19 +73,6 @@ async function startServer() {
   // Ping for connectivity test
   app.get("/api/ping", (req, res) => {
     res.send("pong");
-  });
-
-  // Gemini Health Check
-  app.get("/api/gemini-health", async (req, res) => {
-    try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        return res.json({ status: 'error', message: 'GEMINI_API_KEY não configurada' });
-      }
-      return res.json({ status: 'ok', message: 'Gemini API configurada no ambiente' });
-    } catch (error: any) {
-      return res.status(500).json({ status: 'error', message: error.message });
-    }
   });
 
   // Supabase Health Check
@@ -175,6 +155,7 @@ async function startServer() {
       SUPABASE_URL: SUPABASE_URL ? "SET" : "MISSING",
       SERVICE_ROLE_KEY: SERVICE_ROLE_KEY ? `SET (Length: ${SERVICE_ROLE_KEY.length})` : "MISSING",
       ANON_KEY: ANON_KEY ? `SET (Length: ${ANON_KEY.length})` : "MISSING",
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? "SET" : "MISSING",
       APIFY_TOKEN: APIFY_TOKEN ? "SET" : "MISSING",
       NODE_ENV: process.env.NODE_ENV
     });
@@ -231,42 +212,21 @@ async function startServer() {
 
   app.post("/api/db/upsert-profile", async (req, res) => {
     const { userId, profileData, accessToken } = req.body;
-    const requestId = Math.random().toString(36).substring(7);
-    console.log(`${new Date().toISOString()} | [${requestId}] DB Upsert Request for ${userId}`);
+    console.log(`${new Date().toISOString()} | DB Upsert Request for ${userId}`);
     
     if (!userId) return res.status(400).json({ error: "Missing userId" });
     if (!profileData) return res.status(400).json({ error: "Missing profileData" });
 
     try {
-      // Create a FRESH client for this request to avoid connection pooling issues
-      // and add a timeout to the fetch operation
-      const getClient = () => {
-        const options: any = {
-          auth: { persistSession: false },
-          global: {
-            fetch: (url: string, opts: any) => {
-              // Use a 45s timeout for database operations
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 45000);
-              return fetch(url, { 
-                ...opts, 
-                signal: controller.signal 
-              }).finally(() => clearTimeout(timeoutId));
-            }
-          }
-        };
-
-        if (accessToken && (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY)) {
-          return createClient(SUPABASE_URL, ANON_KEY, {
-            ...options,
-            global: { 
-              ...options.global,
-              headers: { Authorization: `Bearer ${accessToken}` } 
-            }
-          });
-        }
-        return createClient(SUPABASE_URL, SERVICE_ROLE_KEY || ANON_KEY, options);
-      };
+      // Use the provided access token if SERVICE_ROLE_KEY is missing or invalid
+      let client = supabaseServer;
+      if (accessToken && (!SERVICE_ROLE_KEY || SERVICE_ROLE_KEY === ANON_KEY)) {
+        console.log("Using user access token for proxy upsert (Service Role Key missing)");
+        client = createClient(SUPABASE_URL, ANON_KEY, {
+          global: { headers: { Authorization: `Bearer ${accessToken}` } },
+          auth: { persistSession: false }
+        });
+      }
 
       // Ensure the ID is set correctly in the payload
       const payload: any = { 
@@ -278,26 +238,17 @@ async function startServer() {
       // Recursive recovery for missing columns (PGRST204 or 42703) or 5xx errors
       const performUpsertWithRecovery = async (currentPayload: any, attempt = 1): Promise<{ data: any, error: any, removedColumns: string[] }> => {
         const removedColumns: string[] = [];
-        const payloadStr = JSON.stringify(currentPayload);
-        const payloadSize = payloadStr.length;
         
-        console.log(`[${requestId}] [Attempt ${attempt}] Payload size: ${(payloadSize / 1024).toFixed(2)} KB | Keys:`, Object.keys(currentPayload));
+        console.log(`[Upsert Attempt ${attempt}] Payload keys:`, Object.keys(currentPayload));
         
         try {
-          const client = getClient();
-          // On later attempts, don't use .select() to keep the response small and avoid timeouts
-          const query = client.from('profiles').upsert(currentPayload, { onConflict: 'id' });
-          
-          let result;
-          if (attempt < 3) {
-            result = await query.select();
-          } else {
-            result = await query;
-          }
-
-          const { data, error } = result;
+          const { data, error } = await client
+            .from('profiles')
+            .upsert(currentPayload, { onConflict: 'id' })
+            .select();
 
           // PGRST204 is PostgREST "Column not found", 42703 is Postgres "Column does not exist"
+          // Also check for general "schema cache" errors which often mean missing columns
           const isColumnError = error && (
             error.code === 'PGRST204' || 
             error.code === '42703' || 
@@ -305,152 +256,88 @@ async function startServer() {
             error.message?.includes("schema cache")
           );
 
-          // Detect 520 or 5xx errors
+          // Detect 520 or 5xx errors (often returned as HTML in the message)
           const err = error as any;
           const isServerError = err && (
             err.status === 520 || 
             err.status >= 500 || 
-            (typeof err.message === 'string' && (
-              err.message.includes("520") || 
-              err.message.includes("500") ||
-              err.message.includes("Cloudflare") ||
-              err.message.includes("<title>") ||
-              err.message.includes("unknown error") ||
-              err.message.includes("timeout") ||
-              err.message.includes("fetch")
-            )) ||
-            !err.status // Network errors often have no status
+            err.message?.includes("520") || 
+            err.message?.includes("Cloudflare") ||
+            err.message?.includes("<title>")
           );
 
-          // If payload is MASSIVE (> 2MB), start stripping immediately even on attempt 1 if it failed
-          if (isServerError && payloadSize > 2 * 1024 * 1024 && attempt === 1) {
-            console.warn(`[${requestId}] 🚨 Payload too large (${(payloadSize / 1024).toFixed(2)} KB). Forcing Safe Mode.`);
-            const nextPayload = { ...currentPayload };
-            if (nextPayload.social_profiles) {
-              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
-                const { raw_apify_data, recent_posts, ...rest } = p;
-                return rest;
-              });
-            }
-            return performUpsertWithRecovery(nextPayload, attempt + 1);
-          }
-
           if (isColumnError && attempt < 10) {
-            console.warn(`[${requestId}] [Attempt ${attempt}] Column error: ${error.message}`);
+            console.warn(`[Attempt ${attempt}] Column error detected: ${error.code} - ${error.message}`);
             
             const missingColumnMatch = error.message.match(/column "([^"]+)"/) || 
-                                     error.message.match(/column '([^']+)'/);
+                                     error.message.match(/column '([^']+)'/) || 
+                                     error.message.match(/'([^']+)' column/) ||
+                                     error.message.match(/"([^"]+)" column/);
             
             let missingColumn = missingColumnMatch ? missingColumnMatch[1] : null;
             
+            // Fallback for common columns if regex fails but message contains them
+            if (!missingColumn) {
+              const commonColumns = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url', 'name'];
+              for (const col of commonColumns) {
+                if (error.message.includes(`'${col}'`) || error.message.includes(`"${col}"`) || error.message.includes(` ${col} `)) {
+                  missingColumn = col;
+                  break;
+                }
+              }
+            }
+
             if (missingColumn && currentPayload[missingColumn] !== undefined) {
+              console.log(`Removing problematic column '${missingColumn}' and retrying upsert...`);
               const nextPayload = { ...currentPayload };
               delete nextPayload[missingColumn];
               const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
-              return { ...result, removedColumns: [missingColumn, ...result.removedColumns] };
+              return {
+                ...result,
+                removedColumns: [missingColumn, ...result.removedColumns]
+              };
+            } else {
+              // If we can't identify the column but it's a column error, try removing non-essential ones one by one
+              const nonEssential = ['settings', 'updated_at', 'social_profiles', 'specialization', 'avatar_url'];
+              for (const col of nonEssential) {
+                if (currentPayload[col] !== undefined) {
+                  console.log(`Unidentified column error. Trying to remove '${col}' as a guess...`);
+                  const nextPayload = { ...currentPayload };
+                  delete nextPayload[col];
+                  const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+                  return {
+                    ...result,
+                    removedColumns: [col, ...result.removedColumns]
+                  };
+                }
+              }
             }
           }
 
-          // Handle 520/5xx errors with retries and eventually stripping heavy data
-          if (isServerError && attempt < 12) {
-            console.warn(`[${requestId}] [Attempt ${attempt}] Server Error (520/5xx). Retrying...`);
+          // Handle 520/5xx errors with retries and eventually stripping the image
+          if (isServerError && attempt < 5) {
+            console.warn(`[Attempt ${attempt}] Server/Cloudflare error (520/5xx) detected. Retrying...`);
             
-            let nextPayload = { ...currentPayload };
-            let strippedSomething = false;
-            let strippedLabel = "";
-
-            // Progressive stripping logic - even more aggressive now
-            if (attempt === 2 && nextPayload.social_profiles) {
-              // Strip raw_apify_data from all profiles
-              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
-                const { raw_apify_data, ...rest } = p;
-                return rest;
-              });
-              strippedSomething = true;
-              strippedLabel = "raw_apify_data";
-            } 
-            else if (attempt === 3 && nextPayload.social_profiles) {
-              // Strip recent_posts (often large)
-              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
-                const { recent_posts, ...rest } = p;
-                return rest;
-              });
-              strippedSomething = true;
-              strippedLabel = "recent_posts";
-            }
-            else if (attempt === 4 && nextPayload.avatar_url && nextPayload.avatar_url.length > 1000) {
-              // Strip large avatar_url
+            // If it's the 3rd attempt and we still have an avatar_url, try stripping it (Safe Mode)
+            if (attempt >= 2 && currentPayload.avatar_url) {
+              console.log("⚠️ Entering SAFE MODE: Stripping avatar_url to reduce payload size and bypass 520 error.");
+              const nextPayload = { ...currentPayload };
               delete nextPayload.avatar_url;
-              strippedSomething = true;
-              strippedLabel = "avatar_url";
-            }
-            else if (attempt === 5 && nextPayload.social_profiles) {
-              // Truncate analysis_ai fields significantly
-              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
-                if (p.analysis_ai) {
-                  const { diagnostic, next_post_recommendation, ...rest } = p.analysis_ai;
-                  // Keep only essential diagnostic info
-                  const miniDiag = diagnostic ? { 
-                    status_label: diagnostic.status_label,
-                    key_action_item: (diagnostic.key_action_item || "").substring(0, 100)
-                  } : undefined;
-                  return { ...p, analysis_ai: { ...rest, diagnostic: miniDiag } };
-                }
-                return p;
-              });
-              strippedSomething = true;
-              strippedLabel = "truncated analysis_ai";
-            }
-            else if (attempt === 6 && nextPayload.settings) {
-              delete nextPayload.settings;
-              strippedSomething = true;
-              strippedLabel = "settings";
-            }
-            else if (attempt === 7 && nextPayload.social_profiles) {
-              // Strip analysis_ai entirely from all profiles
-              nextPayload.social_profiles = nextPayload.social_profiles.map((p: any) => {
-                const { analysis_ai, ...rest } = p;
-                return rest;
-              });
-              strippedSomething = true;
-              strippedLabel = "analysis_ai (Nuclear)";
-            }
-            else if (attempt === 8 && nextPayload.social_profiles) {
-              // Only keep the VERY LAST profile
-              if (nextPayload.social_profiles.length > 1) {
-                nextPayload.social_profiles = [nextPayload.social_profiles[nextPayload.social_profiles.length - 1]];
-                strippedSomething = true;
-                strippedLabel = "all but last profile";
-              }
-            }
-            else if (attempt === 9 && nextPayload.social_profiles) {
-              delete nextPayload.social_profiles;
-              strippedSomething = true;
-              strippedLabel = "social_profiles (Nuclear)";
-            }
-            else if (attempt >= 10) {
-              // Absolute minimal payload
-              nextPayload = { id: userId, updated_at: new Date().toISOString() };
-              strippedSomething = true;
-              strippedLabel = "everything but ID (Absolute Minimal)";
+              const result = await performUpsertWithRecovery(nextPayload, attempt + 1);
+              return {
+                ...result,
+                removedColumns: ['avatar_url (Safe Mode)', ...result.removedColumns]
+              };
             }
 
-            if (strippedSomething) {
-              console.log(`[${requestId}] ⚠️ SAFE MODE: Stripping ${strippedLabel} for next attempt`);
-              // Add a small delay before retry in safe mode
-              await new Promise(resolve => setTimeout(resolve, 1000));
-              return performUpsertWithRecovery(nextPayload, attempt + 1);
-            }
-
-            // Exponential backoff for non-stripping retries
-            const delay = Math.min(500 * Math.pow(2, attempt - 1), 10000);
-            await new Promise(resolve => setTimeout(resolve, delay));
+            // Wait a bit before retry
+            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
             return performUpsertWithRecovery(currentPayload, attempt + 1);
           }
 
           return { data, error, removedColumns };
         } catch (exc: any) {
-          console.error(`[${requestId}] [Attempt ${attempt}] Exception:`, exc.message);
+          console.error(`[Attempt ${attempt}] Exception during upsert:`, exc);
           if (attempt < 3) {
             await new Promise(resolve => setTimeout(resolve, 1000));
             return performUpsertWithRecovery(currentPayload, attempt + 1);
@@ -462,15 +349,25 @@ async function startServer() {
       const { data, error, removedColumns } = await performUpsertWithRecovery(payload);
       
       if (error) {
-        const errorMsg = typeof error === 'string' ? error : (error.message || JSON.stringify(error));
-        console.error(`[${requestId}] Final Error:`, errorMsg.substring(0, 500));
-        return res.status(400).json({ error: "SUPABASE_UPSERT_ERROR", message: errorMsg });
+        console.error("Final Supabase Upsert Error:", error);
+        return res.status(400).json({ 
+          error: "SUPABASE_UPSERT_ERROR", 
+          message: error.message,
+          details: error 
+        });
       }
-      
-      return res.json({ status: "ok", data, recovered: removedColumns.length > 0, removedColumns });
+      return res.json({ 
+        status: "ok", 
+        data, 
+        recovered: removedColumns.length > 0,
+        removedColumns 
+      });
     } catch (error: any) {
-      console.error(`[${requestId}] Global Exception:`, error);
-      return res.status(500).json({ error: "DB_PROXY_EXCEPTION", message: error.message });
+      console.error("DB Proxy Exception:", error);
+      return res.status(500).json({ 
+        error: "DB_PROXY_EXCEPTION", 
+        message: error.message || "Erro interno ao processar upsert via proxy." 
+      });
     }
   });
 
@@ -692,46 +589,6 @@ async function startServer() {
     }
   });
 
-  // Road Strategies Proxy Routes
-  app.get("/api/db/road-strategies", async (req, res) => {
-    const { userId } = req.query;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
-
-    try {
-      const { data, error } = await supabaseServer
-        .from('road_strategies')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      
-      if (error) throw error;
-      return res.json({ status: "ok", data });
-    } catch (error: any) {
-      console.error("DB Get Road Strategies Error:", error);
-      return res.status(500).json({ error: "DB_GET_ROAD_STRATEGIES_ERROR", message: error.message });
-    }
-  });
-
-  app.post("/api/db/road-strategies", async (req, res) => {
-    const { userId, payload } = req.body;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
-    if (!payload) return res.status(400).json({ error: "Missing payload" });
-
-    try {
-      const itemToInsert = { ...payload, user_id: userId };
-      const { data, error } = await supabaseServer
-        .from('road_strategies')
-        .insert(itemToInsert)
-        .select();
-      
-      if (error) throw error;
-      return res.json({ status: "ok", data });
-    } catch (error: any) {
-      console.error("DB Insert Road Strategy Error:", error);
-      return res.status(500).json({ error: "DB_INSERT_ROAD_STRATEGY_ERROR", message: error.message });
-    }
-  });
-
   // Usage Limits Proxy Routes
   app.get("/api/db/usage", async (req, res) => {
     const { userId } = req.query;
@@ -876,6 +733,108 @@ async function startServer() {
     }
   });
 
+  // OpenAI IA Proxy Route
+  app.post("/api/ia-proxy", async (req, res) => {
+    console.log(`${new Date().toISOString()} | OpenAI IA Proxy Request received`);
+    try {
+      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+      
+      if (!apiKey || apiKey.length < 10) {
+        console.error("OPENAI_API_KEY MISSING OR INVALID");
+        return res.status(401).json({ 
+          error: "OPENAI_KEY_MISSING", 
+          message: "A chave da API OpenAI (OPENAI_API_KEY) não foi configurada no servidor." 
+        });
+      }
+
+      const openai = new OpenAI({ apiKey });
+      const { contents, config, model } = req.body || {};
+
+      // If it's an image generation request (based on model or some flag)
+      if (model === 'gemini-2.5-flash-image' || model?.includes('image')) {
+        const prompt = typeof contents === 'string' ? contents : (contents?.parts?.[0]?.text || "Generate an icon");
+        const response = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: prompt,
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json"
+        });
+
+        if (response.data && response.data[0] && response.data[0].b64_json) {
+          return res.status(200).json({ 
+            image: {
+              data: response.data[0].b64_json,
+              mimeType: "image/png"
+            }
+          });
+        }
+        throw new Error("Falha na geração da imagem: dados ausentes");
+      }
+
+      // Standard text generation
+      let prompt = typeof contents === 'string' ? contents : JSON.stringify(contents);
+      
+      // OpenAI requirement: prompt must contain 'json' if response_format is 'json_object'
+      const isJsonRequested = config?.responseMimeType === "application/json";
+      if (isJsonRequested && !prompt.toLowerCase().includes("json")) {
+        prompt += "\n\nResponda obrigatoriamente em formato JSON.";
+      }
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: isJsonRequested ? { type: "json_object" } : undefined
+      });
+
+      const rawText = completion.choices[0].message.content || '{}';
+      
+      let parsedData;
+      try {
+        parsedData = JSON.parse(rawText);
+      } catch (e) {
+        parsedData = { text: rawText };
+      }
+
+      return res.status(200).json(parsedData);
+    } catch (error: any) {
+      console.error("OpenAI Proxy Error:", error);
+      
+      return res.status(500).json({ 
+        error: "OPENAI_PROXY_ERROR", 
+        message: error.message || "Erro interno no processamento da IA." 
+      });
+    }
+  });
+
+  // OpenAI Health Route
+  app.get("/api/openai-health", async (req, res) => {
+    try {
+      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+      if (!apiKey || apiKey.length < 10) {
+        return res.json({ status: "error", message: "Chave OpenAI ausente ou curta demais" });
+      }
+      
+      const openai = new OpenAI({ apiKey });
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: "ping" }],
+        max_tokens: 1
+      });
+      
+      if (response.choices[0].message.content) {
+        return res.json({ status: "ok", message: "OpenAI está operacional" });
+      }
+      return res.json({ status: "error", message: "Resposta vazia da OpenAI" });
+    } catch (error: any) {
+      console.error("OpenAI Health Error:", error);
+      return res.json({ 
+        status: "error", 
+        message: error.message || "Erro desconhecido"
+      });
+    }
+  });
+
   // Apify Health Route
   app.get("/api/apify-health", async (req, res) => {
     try {
@@ -890,6 +849,42 @@ async function startServer() {
       return res.json({ status: "error", message: "Token Apify inválido ou expirado" });
     } catch (error: any) {
       return res.json({ status: "error", message: error.message });
+    }
+  });
+
+  // Social Analyze Proxy Route (OpenAI version)
+  app.post("/api/social-analyze", async (req, res) => {
+    console.log(`${new Date().toISOString()} | Social Analyze Proxy Request received`);
+    try {
+      const apiKey = (process.env.OPENAI_API_KEY || '').trim();
+      if (!apiKey || apiKey.length < 10) {
+        return res.status(401).json({ error: "OPENAI_KEY_MISSING", message: "A chave da API OpenAI não foi configurada." });
+      }
+
+      const openai = new OpenAI({ apiKey });
+      const { profiles, niche, specialization, realMetrics, objective, recentPosts } = req.body || {};
+
+      const metricsContext = realMetrics ? `
+        DADOS REAIS DE ENGAJAMENTO (@${realMetrics.handle}):
+        - Seguidores: ${realMetrics.followers}
+        - Média Likes: ${realMetrics.likes}
+        - Vídeos/Posts: ${realMetrics.posts}
+        - Taxa de Engajamento Calculada: ${realMetrics.engagement_rate}%
+      ` : "DADOS: Perfil ainda não analisado ou privado.";
+
+      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}. Responda obrigatoriamente em formato JSON com o campo "results" contendo um array de objetos com "profile_id" e "analysis" (viral_score, best_format, frequency_suggestion, content_pillars, diagnostic, next_post_recommendation).`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [{ role: "user", content: prompt }],
+        response_format: { type: "json_object" }
+      });
+
+      const rawText = completion.choices[0].message.content || '{}';
+      return res.status(200).json(JSON.parse(rawText));
+    } catch (error: any) {
+      console.error("Social Analyze Proxy Error:", error);
+      return res.status(500).json({ error: error.message || "Internal Server Error" });
     }
   });
 

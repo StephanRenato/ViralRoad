@@ -1,42 +1,29 @@
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, PlanType, SubscriptionStatus, ProfileType } from './types';
 import { supabase } from './services/supabase';
 import GlobalLoader from './components/GlobalLoader';
-import GeminiKeyGuard from './components/GeminiKeyGuard';
-import Sidebar from './components/Sidebar';
-import Dashboard from './pages/Dashboard';
 
-// Rotas Públicas & Institucionais
-import LandingPage from './pages/LandingPage';
-import Privacy from './pages/Privacy';
-import Terms from './pages/Terms';
-import Support from './pages/Support';
-import SalesPage from './pages/SalesPage';
+// Lazy Loading - Rotas Públicas & Institucionais
+const LandingPage = lazy(() => import('./pages/LandingPage'));
+const Privacy = lazy(() => import('./pages/Privacy'));
+const Terms = lazy(() => import('./pages/Terms'));
+const Support = lazy(() => import('./pages/Support'));
+const SalesPage = lazy(() => import('./pages/SalesPage'));
 
-// Autenticação
-import Login from './pages/Login';
-import Register from './pages/Register';
-import ForgotPassword from './pages/ForgotPassword';
-import UpdatePassword from './pages/UpdatePassword';
+// Lazy Loading - Autenticação
+const Login = lazy(() => import('./pages/Login'));
+const Register = lazy(() => import('./pages/Register'));
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'));
+const UpdatePassword = lazy(() => import('./pages/UpdatePassword'));
 
-// Aplicação
-import SuccessPage from './pages/SuccessPage';
-
-const ProtectedRoute: React.FC<{ 
-  session: any, 
-  user: User | null, 
-  loading: boolean, 
-  children: React.ReactNode 
-}> = ({ session, user, loading, children }) => {
-  if (loading) return <GlobalLoader />;
-  if (!session || !user) return <Navigate to="/login" replace />;
-  return <>{children}</>;
-};
+// Lazy Loading - Aplicação
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const SuccessPage = lazy(() => import('./pages/SuccessPage'));
+const Sidebar = lazy(() => import('./components/Sidebar'));
 
 const App: React.FC = () => {
-  console.log("📱 App: Renderizando componente raiz...");
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -73,7 +60,7 @@ const App: React.FC = () => {
     let finalUsage = usage;
     if (!usage) {
       const initialPlan = isSpecialUser ? PlanType.Pro : PlanType.Starter;
-      const initialLimit = isSpecialUser ? 999999 : 100; // Alterado para 100 conforme solicitado
+      const initialLimit = isSpecialUser ? 999999 : 5;
       
       finalUsage = {
         user_id: authUser.id,
@@ -82,9 +69,6 @@ const App: React.FC = () => {
         used_this_month: 0
       };
     }
-
-    const currentPlan = isSpecialUser ? PlanType.Pro : (finalUsage?.plan as PlanType || PlanType.Starter);
-    const monthlyLimit = isSpecialUser ? 999999 : (currentPlan === PlanType.Pro ? 999999 : (finalUsage?.monthly_limit || 100));
 
     // Extração segura de configurações (suporte a JSON e colunas planas) + Fallback para metadata
     const dbSettings = profile?.settings;
@@ -112,11 +96,10 @@ const App: React.FC = () => {
       profileType: safeProfileType,
       specialization: safeSpecialization,
       avatarUrl: profile?.avatar_url || authUser.user_metadata?.avatar_url,
-      currentPlan,
+      currentPlan: isSpecialUser ? PlanType.Pro : (finalUsage?.plan as PlanType || PlanType.Starter),
       subscriptionStatus: isSpecialUser ? SubscriptionStatus.Active : ((profile?.subscription_status as SubscriptionStatus) || SubscriptionStatus.None),
       usedBlueprints: finalUsage?.used_this_month || 0,
-      monthlyLimit,
-      isUnlimited: currentPlan === PlanType.Pro || isSpecialUser,
+      monthlyLimit: isSpecialUser ? 999999 : (finalUsage?.monthly_limit || 5),
       
       // Novos campos essenciais para o ProfilePage
       socialProfiles: safeSocialProfiles,
@@ -228,25 +211,18 @@ const App: React.FC = () => {
   useEffect(() => {
     if (theme === 'dark') document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
-  }, [theme]);
 
-  useEffect(() => {
-    console.log("🔐 App: Iniciando monitoramento de autenticação...");
-    
     // Verifica sessão inicial
-    supabase.auth.getSession().then(({ data: { session: initialSession } }: any) => {
-      if (initialSession?.user) {
-        console.log("👤 App: Sessão inicial detectada para:", initialSession.user.email);
-        setSession(initialSession);
-        fetchUserData(initialSession.user);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        setSession(session);
+        fetchUserData(session.user);
       } else {
-        console.log("👤 App: Nenhuma sessão inicial encontrada.");
         setLoading(false);
       }
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, currentSession: any) => {
-      console.log(`🔔 App: Evento de Auth: ${event}`);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, currentSession) => {
       if (currentSession?.user) {
         setSession(currentSession);
         if (!user || user.id !== currentSession.user.id) {
@@ -259,11 +235,8 @@ const App: React.FC = () => {
       }
     });
 
-    return () => {
-      console.log("🔐 App: Encerrando monitoramento de autenticação.");
-      subscription.unsubscribe();
-    };
-  }, []);
+    return () => subscription.unsubscribe();
+  }, [theme]);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -273,60 +246,54 @@ const App: React.FC = () => {
   if (loading) return <GlobalLoader />;
 
   return (
-    <GeminiKeyGuard>
-      <HashRouter>
-        <Suspense fallback={<GlobalLoader />}>
-          <Routes>
-            {/* Rotas Públicas */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/support" element={<Support />} />
-            <Route path="/sales" element={<SalesPage />} />
-            
-            {/* Rotas de Autenticação */}
-            <Route path="/login" element={session && user ? <Navigate to="/dashboard" /> : <Login onLogin={() => {}} />} />
-            <Route path="/register" element={session && user ? <Navigate to="/dashboard" /> : <Register onRegister={() => {}} />} />
-            <Route path="/forgot-password" element={session && user ? <Navigate to="/dashboard" /> : <ForgotPassword />} />
-            <Route path="/update-password" element={<UpdatePassword />} />
-            
-            {/* Rotas Protegidas */}
-            <Route path="/success" element={
-              <ProtectedRoute session={session} user={user} loading={loading}>
-                <SuccessPage user={user!} onRefresh={async () => { await fetchUserData(session.user); }} />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/dashboard/*" element={
-              <ProtectedRoute session={session} user={user} loading={loading}>
-                <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
-                  <Sidebar 
-                    user={user!} 
-                    theme={theme} 
-                    onToggleTheme={toggleTheme} 
+    <HashRouter>
+      <Suspense fallback={<GlobalLoader />}>
+        <Routes>
+          {/* Rotas Públicas */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/support" element={<Support />} />
+          <Route path="/sales" element={<SalesPage />} />
+          
+          {/* Rotas de Autenticação */}
+          <Route path="/login" element={session && user ? <Navigate to="/dashboard" /> : <Login onLogin={() => {}} />} />
+          <Route path="/register" element={session && user ? <Navigate to="/dashboard" /> : <Register onRegister={() => {}} />} />
+          <Route path="/forgot-password" element={session && user ? <Navigate to="/dashboard" /> : <ForgotPassword />} />
+          <Route path="/update-password" element={<UpdatePassword />} />
+          
+          {/* Rotas Protegidas */}
+          <Route path="/success" element={session && user ? <SuccessPage user={user} onRefresh={async () => { await fetchUserData(session.user); }} /> : <Navigate to="/login" />} />
+          
+          <Route path="/dashboard/*" element={
+            session && user ? (
+              <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
+                <Sidebar 
+                  user={user} 
+                  theme={theme} 
+                  onToggleTheme={toggleTheme} 
+                  onLogout={handleLogout} 
+                  onUpgradeClick={() => setShowUpgradeModal(true)} 
+                />
+                <main className="flex-1 overflow-auto scroll-smooth-container relative">
+                   <Dashboard 
+                    user={user} 
                     onLogout={handleLogout} 
-                    onUpgradeClick={() => setShowUpgradeModal(true)} 
+                    showUpgrade={showUpgradeModal} 
+                    onCloseUpgrade={() => setShowUpgradeModal(false)} 
+                    onOpenUpgrade={() => setShowUpgradeModal(true)} 
+                    onRefreshUser={() => fetchUserData(session.user, true)}
                   />
-                  <main className="flex-1 overflow-auto scroll-smooth-container relative">
-                     <Dashboard 
-                      user={user!} 
-                      onLogout={handleLogout} 
-                      showUpgrade={showUpgradeModal} 
-                      onCloseUpgrade={() => setShowUpgradeModal(false)} 
-                      onOpenUpgrade={() => setShowUpgradeModal(true)} 
-                      onRefreshUser={() => fetchUserData(session.user, true)}
-                    />
-                  </main>
-                </div>
-              </ProtectedRoute>
-            } />
-            
-            {/* Fallback 404 */}
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </Suspense>
-      </HashRouter>
-    </GeminiKeyGuard>
+                </main>
+              </div>
+            ) : <Navigate to="/login" />
+          } />
+          
+          {/* Fallback 404 */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+      </Suspense>
+    </HashRouter>
   );
 };
 

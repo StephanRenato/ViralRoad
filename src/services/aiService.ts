@@ -1,44 +1,27 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult } from "../types";
 
 const SYSTEM_PROMPT = `Você é o VIRAL ROAD, estrategista de elite. Responda em PT-BR.`;
 
-// Initialize Gemini API safely for both browser and server environments
-const getApiKey = () => {
+async function callAIProxy(model: string, prompt: string, config: any) {
   try {
-    // In Vite/Browser, process.env might be undefined
-    return (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || '';
-  } catch (e) {
-    return '';
-  }
-};
-
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
-
-async function callAI(modelName: string, prompt: string, config: any) {
-  try {
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        systemInstruction: config.systemInstruction || SYSTEM_PROMPT,
-        responseMimeType: config.responseMimeType || "application/json",
-        responseSchema: config.responseSchema,
-        temperature: config.temperature || 1,
-      }
+    const response = await fetch('/api/ia-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        contents: prompt,
+        config
+      })
     });
 
-    if (!response.text) {
-      throw new Error("Resposta vazia da IA");
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || errorData.error || `Erro na API: ${response.status}`);
     }
 
-    try {
-      return JSON.parse(response.text);
-    } catch (e) {
-      return { text: response.text };
-    }
+    return await response.json();
   } catch (error: any) {
-    console.error(`Erro na geração de conteúdo (${modelName}):`, error);
+    console.error("Erro na geração de narrativas:", error);
     throw error;
   }
 }
@@ -114,14 +97,14 @@ export async function generateNarratives(params: any) {
 
     Responda em Português do Brasil (PT-BR).
   `;
-  const res = await callAI("gemini-3-flash-preview", prompt, {
+  const res = await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        analysis_insight: { type: Type.STRING },
-        narratives: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, description: { type: Type.STRING } } } }
+        analysis_insight: { type: "STRING" },
+        narratives: { type: "ARRAY", items: { type: "OBJECT", properties: { title: { type: "STRING" }, description: { type: "STRING" } } } }
       }
     }
   });
@@ -142,12 +125,12 @@ export async function generateHeadlines(params: any) {
 
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  const res = await callAI("gemini-3-flash-preview", prompt, {
+  const res = await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
-      properties: { headlines: { type: Type.ARRAY, items: { type: Type.STRING } } }
+      type: "OBJECT",
+      properties: { headlines: { type: "ARRAY", items: { type: "STRING" } } }
     }
   });
   return normalizeAIKeys(res);
@@ -178,16 +161,16 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  const res = await callAI("gemini-3-flash-preview", prompt, {
+  const res = await callAIProxy("gpt-4o", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        script: { type: Type.STRING },
-        caption: { type: Type.STRING },
-        hashtags: { type: Type.STRING },
-        creativeDirection: { type: Type.STRING }
+        script: { type: "STRING" },
+        caption: { type: "STRING" },
+        hashtags: { type: "STRING" },
+        creativeDirection: { type: "STRING" }
       }
     }
   });
@@ -211,54 +194,52 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
 
         INSTRUÇÕES PARA O RELATÓRIO (RESPONDA EM PT-BR):
         1. viral_score: Um número de 0 a 100 baseado no potencial de viralização atual.
-        2. best_format: Identifique o formato vencedor ESPECÍFICO (ex: "Reels de Curiosidade com Cortes Rápidos", "Carrosséis de Tutorial Passo-a-Passo"). NÃO use termos genéricos.
-        3. frequency_suggestion: Plano prático e detalhado (ex: "1 Reel diário focado em topo de funil + 3 Stories de interação").
-        4. content_pillars: Lista de 3 a 4 temas estratégicos (ex: "Bastidores da Produção", "Dicas Rápidas de [Nicho]", "Quebra de Objeções").
-        5. diagnostic.status_label: Uma frase curta e impactante de status.
-        6. diagnostic.key_action_item: A ação #1 TÁTICA que o usuário deve fazer HOJE (ex: "Grave um vídeo de 15s respondendo a dúvida X", "Mude sua Bio para focar no benefício Y").
-        7. diagnostic.tone_audit: Auditoria profunda do tom de voz atual vs ideal.
-        8. diagnostic.content_strategy_advice: Linha Editorial e narrativa mestre. Como se diferenciar da concorrência?
-        9. diagnostic.visual_style: Estética visual, paleta de cores sugerida e estilo de fotografia/vídeo.
-        10. next_post_recommendation: Uma ideia real, pronta para gravar, incluindo gancho e objetivo.
+        2. best_format: Identifique o formato vencedor (ex: "Reels de Curiosidade", "Carrosséis Educativos", "Shorts de Lifestyle").
+        3. frequency_suggestion: Plano prático de postagem (ex: "1 Reel diário + 5 Stories estratégicos").
+        4. content_pillars: Lista de 3 a 4 temas que o perfil DEVE dominar.
+        5. diagnostic.status_label: Uma frase curta de status (ex: "PERFIL COM ALTO POTENCIAL", "NECESSITA AJUSTE DE RITMO").
+        6. diagnostic.key_action_item: A ação #1 que o usuário deve fazer HOJE para mudar o jogo.
+        7. diagnostic.tone_audit: Analise o tom de voz. Ele é autoritário? Amigável? Precisa ser mais magnético?
+        8. diagnostic.content_strategy_advice: A Linha Editorial completa. Como ele deve se posicionar? Qual a narrativa mestre?
+        9. next_post_recommendation: Uma ideia real de postagem para ele fazer agora.
 
-        IMPORTANTE: Você é um consultor de R$ 10.000/hora. Seja extremamente específico, tático e direto. Não use placeholders. Use os dados reais fornecidos para embasar sua estratégia.
+        IMPORTANTE: Não use placeholders. Seja específico para o nicho "${params.niche}".
     `;
 
-    return await callAI("gemini-3.1-pro-preview", prompt, {
+    return await callAIProxy("gpt-4o", prompt, {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
-            type: Type.OBJECT,
+            type: "OBJECT",
             properties: {
                 results: {
-                    type: Type.ARRAY,
+                    type: "ARRAY",
                     items: {
-                        type: Type.OBJECT,
+                        type: "OBJECT",
                         properties: {
-                            profile_id: { type: Type.STRING },
+                            profile_id: { type: "STRING" },
                             analysis: {
-                                type: Type.OBJECT,
+                                type: "OBJECT",
                                 properties: {
-                                    viral_score: { type: Type.NUMBER },
-                                    best_format: { type: Type.STRING },
-                                    frequency_suggestion: { type: Type.STRING },
-                                    content_pillars: { type: Type.ARRAY, items: { type: Type.STRING } },
+                                    viral_score: { type: "NUMBER" },
+                                    best_format: { type: "STRING" },
+                                    frequency_suggestion: { type: "STRING" },
+                                    content_pillars: { type: "ARRAY", items: { type: "STRING" } },
                                     diagnostic: {
-                                        type: Type.OBJECT,
+                                        type: "OBJECT",
                                         properties: {
-                                            status_label: { type: Type.STRING },
-                                            key_action_item: { type: Type.STRING },
-                                            tone_audit: { type: Type.STRING },
-                                            content_strategy_advice: { type: Type.STRING },
-                                            visual_style: { type: Type.STRING }
+                                            status_label: { type: "STRING" },
+                                            key_action_item: { type: "STRING" },
+                                            tone_audit: { type: "STRING" },
+                                            content_strategy_advice: { type: "STRING" }
                                         }
                                     },
                                     next_post_recommendation: {
-                                        type: Type.OBJECT,
+                                        type: "OBJECT",
                                         properties: {
-                                            format: { type: Type.STRING },
-                                            topic: { type: Type.STRING },
-                                            reason: { type: Type.STRING }
+                                            format: { type: "STRING" },
+                                            topic: { type: "STRING" },
+                                            reason: { type: "STRING" }
                                         }
                                     }
                                 }
@@ -285,15 +266,15 @@ export async function auditUserProfile(params: any) {
 
     Responda em PT-BR.
   `;
-  return await callAI("gemini-3-flash-preview", prompt, {
+  return await callAIProxy("gpt-4o", prompt, {
     responseMimeType: "application/json",
     responseSchema: {
-      type: Type.OBJECT,
+      type: "OBJECT",
       properties: {
-        score: { type: Type.NUMBER },
-        market_status: { type: Type.STRING },
-        verdict: { type: Type.STRING },
-        tip: { type: Type.STRING }
+        score: { type: "NUMBER" },
+        market_status: { type: "STRING" },
+        verdict: { type: "STRING" },
+        tip: { type: "STRING" }
       }
     }
   });
@@ -301,76 +282,27 @@ export async function auditUserProfile(params: any) {
 
 export async function generateHookSeedIdeas(params: any) {
     const prompt = `Temas virais para ${params.profileType}.`;
-    return await callAI("gemini-3-flash-preview", prompt, {
+    return await callAIProxy("gpt-4o", prompt, {
         responseMimeType: "application/json",
-        responseSchema: { type: Type.OBJECT, properties: { topics: { type: Type.ARRAY, items: { type: Type.STRING } } } }
+        responseSchema: { type: "OBJECT", properties: { topics: { type: "ARRAY", items: { type: "STRING" } } } }
     });
-}
-
-export async function generateRoadStrategy(params: { niche: string, objective: string, platform: string }) {
-  const prompt = `
-    Você é o VIRAL ROAD, estrategista de elite. Gere uma estratégia completa de conteúdo para:
-    Nicho: ${params.niche}
-    Objetivo: ${params.objective}
-    Plataforma: ${params.platform}
-
-    INSTRUÇÃO DE FORMATO:
-    Retorne um objeto JSON com as chaves EXATAMENTE assim:
-    {
-      "content_pillars": ["pilar 1", "pilar 2", "pilar 3"],
-      "viral_hooks": ["gancho 1", "gancho 2", "gancho 3", "gancho 4", "gancho 5"],
-      "post_ideas": ["ideia 1", "ideia 2", "ideia 3"],
-      "posting_frequency": "string",
-      "best_format": "string",
-      "video_script": "string"
-    }
-
-    Inclua:
-    1. Pilares de conteúdo (3 temas principais)
-    2. Hooks virais (5 ganchos magnéticos)
-    3. Ideias de posts (3 ideias detalhadas)
-    4. Frequência ideal de postagem
-    5. Melhor formato (Reels, Carrossel, etc)
-    6. Roteiro de vídeo completo (Script)
-
-    Responda tudo em Português do Brasil (PT-BR).
-  `;
-
-  const res = await callAI("gemini-3.1-pro-preview", prompt, {
-    systemInstruction: SYSTEM_PROMPT,
-    responseMimeType: "application/json",
-    responseSchema: {
-      type: Type.OBJECT,
-      properties: {
-        content_pillars: { type: Type.ARRAY, items: { type: Type.STRING } },
-        viral_hooks: { type: Type.ARRAY, items: { type: Type.STRING } },
-        post_ideas: { type: Type.ARRAY, items: { type: Type.STRING } },
-        posting_frequency: { type: Type.STRING },
-        best_format: { type: Type.STRING },
-        video_script: { type: Type.STRING }
-      },
-      required: ["content_pillars", "viral_hooks", "post_ideas", "posting_frequency", "best_format", "video_script"]
-    }
-  });
-
-  return normalizeAIKeys(res);
 }
 
 export async function generateHooksFromTopic(params: any) {
     const prompt = `Ganchos para: ${params.topic}.`;
-    return await callAI("gemini-3-flash-preview", prompt, {
+    return await callAIProxy("gpt-4o", prompt, {
         responseMimeType: "application/json",
         responseSchema: {
-            type: Type.OBJECT,
+            type: "OBJECT",
             properties: {
                 hooks: {
-                    type: Type.ARRAY,
+                    type: "ARRAY",
                     items: {
-                        type: Type.OBJECT,
+                        type: "OBJECT",
                         properties: {
-                            content: { type: Type.STRING },
-                            viral_percentage: { type: Type.NUMBER },
-                            explanation: { type: Type.STRING }
+                            content: { type: "STRING" },
+                            viral_percentage: { type: "NUMBER" },
+                            explanation: { type: "STRING" }
                         }
                     }
                 }
