@@ -738,7 +738,7 @@ async function startServer() {
   app.post("/api/ia-proxy", async (req, res) => {
     console.log(`${new Date().toISOString()} | Gemini IA Proxy Request received`);
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '').trim();
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
       
       if (!apiKey || apiKey.length < 10) {
         console.error("GEMINI_API_KEY MISSING OR INVALID");
@@ -812,7 +812,7 @@ async function startServer() {
   // Gemini Health Route
   app.get("/api/gemini-health", async (req, res) => {
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '').trim();
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
       if (!apiKey || apiKey.length < 10) {
         return res.json({ status: "error", message: "Chave Gemini ausente ou curta demais" });
       }
@@ -857,7 +857,7 @@ async function startServer() {
   app.post("/api/social-analyze", async (req, res) => {
     console.log(`${new Date().toISOString()} | Social Analyze Proxy Request received`);
     try {
-      const apiKey = (process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '').trim();
+      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
       if (!apiKey || apiKey.length < 10) {
         return res.status(401).json({ error: "GEMINI_KEY_MISSING", message: "A chave da API Gemini não foi configurada." });
       }
