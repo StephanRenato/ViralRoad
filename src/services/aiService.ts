@@ -1,27 +1,51 @@
 import { AnalysisResult } from "../types";
+import { GoogleGenAI, Modality } from "@google/genai";
 
 const SYSTEM_PROMPT = `Você é o VIRAL ROAD, estrategista de elite. Responda em PT-BR.`;
 
-async function callAIProxy(model: string, prompt: string, config: any) {
+// Lazy initialization of GoogleGenAI
+let aiInstance: GoogleGenAI | null = null;
+
+function getAI() {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error("A chave da API Gemini não foi configurada. Por favor, verifique as configurações.");
+    }
+    aiInstance = new GoogleGenAI({ apiKey });
+  }
+  return aiInstance;
+}
+
+async function callAI(model: string, prompt: string, config: any) {
   try {
-    const response = await fetch('/api/ia-proxy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        contents: prompt,
-        config
-      })
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: model || "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        ...config,
+        systemInstruction: config.systemInstruction || SYSTEM_PROMPT,
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || errorData.error || `Erro na API: ${response.status}`);
+    if (!response.text) {
+      throw new Error("A IA retornou uma resposta vazia.");
     }
 
-    return await response.json();
+    if (config.responseMimeType === "application/json") {
+      try {
+        return JSON.parse(response.text);
+      } catch (e) {
+        // Fallback for malformed JSON
+        const cleaned = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(cleaned);
+      }
+    }
+
+    return response.text;
   } catch (error: any) {
-    console.error("Erro na geração de narrativas:", error);
+    console.error("Erro na chamada da IA:", error);
     throw error;
   }
 }
@@ -97,7 +121,7 @@ export async function generateNarratives(params: any) {
 
     Responda em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gemini-3-flash-preview", prompt, {
+  const res = await callAI("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -109,6 +133,98 @@ export async function generateNarratives(params: any) {
     }
   });
   return normalizeAIKeys(res);
+}
+
+export async function generateImage(prompt: string) {
+  try {
+    const ai = getAI();
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [
+          {
+            text: prompt,
+          },
+        ],
+      },
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1",
+        },
+      },
+    });
+
+    for (const part of response.candidates?.[0]?.content?.parts || []) {
+      if (part.inlineData?.data) {
+        const base64EncodeString: string = part.inlineData.data;
+        return `data:image/png;base64,${base64EncodeString}`;
+      }
+    }
+    throw new Error("Nenhuma imagem foi gerada.");
+  } catch (error) {
+    console.error("Erro ao gerar imagem:", error);
+    throw error;
+  }
+}
+
+export async function generateVideo(prompt: string) {
+  try {
+    const ai = getAI();
+    let operation = await ai.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: prompt,
+      config: {
+        numberOfVideos: 1,
+        resolution: '720p',
+        aspectRatio: '16:9'
+      }
+    });
+
+    // Poll for completion
+    while (!operation.done) {
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      operation = await ai.operations.getVideosOperation({ operation: operation });
+    }
+
+    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+    if (!downloadLink) throw new Error("Link de download do vídeo não encontrado.");
+
+    // Fetch the video with the API key
+    const apiKey = process.env.GEMINI_API_KEY;
+    const response = await fetch(downloadLink, {
+      method: 'GET',
+      headers: {
+        'x-goog-api-key': apiKey || '',
+      },
+    });
+
+    if (!response.ok) throw new Error("Falha ao baixar o vídeo gerado.");
+    
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  } catch (error) {
+    console.error("Erro ao gerar vídeo:", error);
+    throw error;
+  }
+}
+
+export async function chatWithAssistant(message: string, history: any[] = []) {
+  try {
+    const ai = getAI();
+    const chat = ai.chats.create({
+      model: "gemini-3-flash-preview",
+      config: {
+        systemInstruction: SYSTEM_PROMPT + " Você ajuda o usuário a criar conteúdo viral, dá ideias de posts e analisa estratégias.",
+      },
+      history: history
+    });
+
+    const response = await chat.sendMessage({ message });
+    return response.text;
+  } catch (error) {
+    console.error("Erro no chat com assistente:", error);
+    throw error;
+  }
 }
 
 export async function generateHeadlines(params: any) {
@@ -125,7 +241,7 @@ export async function generateHeadlines(params: any) {
 
     Os ganchos devem ser curtos, impactantes e em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gemini-3-flash-preview", prompt, {
+  const res = await callAI("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -161,7 +277,7 @@ export async function generateFinalStrategy(params: any) {
 
     Responda tudo em Português do Brasil (PT-BR).
   `;
-  const res = await callAIProxy("gemini-3-flash-preview", prompt, {
+  const res = await callAI("gemini-3-flash-preview", prompt, {
     systemInstruction: SYSTEM_PROMPT,
     responseMimeType: "application/json",
     responseSchema: {
@@ -206,7 +322,7 @@ export async function analyzeSocialStrategy(params: any): Promise<AnalysisResult
         IMPORTANTE: Não use placeholders. Seja específico para o nicho "${params.niche}".
     `;
 
-    return await callAIProxy("gemini-3-flash-preview", prompt, {
+    return await callAI("gemini-3-flash-preview", prompt, {
         systemInstruction: SYSTEM_PROMPT,
         responseMimeType: "application/json",
         responseSchema: {
@@ -266,7 +382,7 @@ export async function auditUserProfile(params: any) {
 
     Responda em PT-BR.
   `;
-  return await callAIProxy("gemini-3-flash-preview", prompt, {
+  return await callAI("gemini-3-flash-preview", prompt, {
     responseMimeType: "application/json",
     responseSchema: {
       type: "OBJECT",
@@ -282,7 +398,7 @@ export async function auditUserProfile(params: any) {
 
 export async function generateHookSeedIdeas(params: any) {
     const prompt = `Temas virais para ${params.profileType}.`;
-    return await callAIProxy("gemini-3-flash-preview", prompt, {
+    return await callAI("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
         responseSchema: { type: "OBJECT", properties: { topics: { type: "ARRAY", items: { type: "STRING" } } } }
     });
@@ -290,7 +406,7 @@ export async function generateHookSeedIdeas(params: any) {
 
 export async function generateHooksFromTopic(params: any) {
     const prompt = `Ganchos para: ${params.topic}.`;
-    return await callAIProxy("gemini-3-flash-preview", prompt, {
+    return await callAI("gemini-3-flash-preview", prompt, {
         responseMimeType: "application/json",
         responseSchema: {
             type: "OBJECT",
@@ -309,4 +425,41 @@ export async function generateHooksFromTopic(params: any) {
             }
         }
     });
+}
+
+export async function generateRoadStrategy(params: any) {
+  const prompt = `
+    Crie uma estratégia de conteúdo completa para:
+    Nicho: ${params.niche}
+    Objetivo: ${params.objective}
+    Plataforma: ${params.platform}
+
+    INSTRUÇÃO DE FORMATO:
+    Retorne um objeto JSON com as chaves EXATAMENTE assim:
+    {
+      "content_pillars": ["pilar 1", "pilar 2", "pilar 3"],
+      "viral_hooks": ["gancho 1", "gancho 2", "gancho 3"],
+      "post_ideas": ["ideia 1", "ideia 2", "ideia 3"],
+      "posting_frequency": "string",
+      "best_format": "string",
+      "video_script": "string"
+    }
+
+    Responda em Português do Brasil (PT-BR).
+  `;
+  return await callAI("gemini-3-flash-preview", prompt, {
+    systemInstruction: SYSTEM_PROMPT,
+    responseMimeType: "application/json",
+    responseSchema: {
+      type: "OBJECT",
+      properties: {
+        content_pillars: { type: "ARRAY", items: { type: "STRING" } },
+        viral_hooks: { type: "ARRAY", items: { type: "STRING" } },
+        post_ideas: { type: "ARRAY", items: { type: "STRING" } },
+        posting_frequency: { type: "STRING" },
+        best_format: { type: "STRING" },
+        video_script: { type: "STRING" }
+      }
+    }
+  });
 }

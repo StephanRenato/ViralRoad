@@ -3,7 +3,7 @@ import { supabase } from '../services/supabase';
 import { User } from '../types';
 import { Anchor, Loader2, Copy, CheckCircle2, Sparkles, X, Save, Trash2, Wand2, AlertTriangle, ArrowRight, Zap, Trophy, Target, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { generateHookTopics, generateViralHooks } from '../services/aiService';
+import { generateHookSeedIdeas, generateHooksFromTopic } from '../services/aiService';
 
 interface HooksLibraryPageProps {
   user: User;
@@ -128,10 +128,10 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user, onRefreshUser
     setSelectedTopic(null);
     setImportSuccess(false);
     try {
-      const topics = await generateHookTopics({
+      const res = await generateHookSeedIdeas({
         niche: user.specialization || user.profileType || 'Geral'
       });
-      setHookTopics(topics || []);
+      setHookTopics(res.topics || []);
     } catch (e) {
       console.error("Erro ao gerar temas:", e);
     } finally {
@@ -148,16 +148,14 @@ const HooksLibraryPage: React.FC<HooksLibraryPageProps> = ({ user, onRefreshUser
     setSelectedTopic(topic);
     setGeneratingHooks(true);
     try {
-      const hooks = await generateViralHooks({
-        niche: user.specialization || user.profileType || 'Geral',
-        platform: 'Instagram',
-        contentType: 'Reels'
+      const res = await generateHooksFromTopic({
+        topic: topic
       });
       
-      const generated = (hooks || []).map((h: string) => ({
-        content: h,
-        viral_percentage: Math.floor(Math.random() * 20) + 80,
-        explanation: "Gancho otimizado para retenção e curiosidade."
+      const generated = (res.hooks || []).map((h: any) => ({
+        content: h.content,
+        viral_percentage: h.viral_percentage || Math.floor(Math.random() * 20) + 80,
+        explanation: h.explanation || "Gancho otimizado para retenção e curiosidade."
       }));
       
       generated.sort((a: any, b: any) => b.viral_percentage - a.viral_percentage);

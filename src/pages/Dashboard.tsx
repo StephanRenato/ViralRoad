@@ -3,7 +3,7 @@ import React, { Suspense } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { User } from '../types';
 import { Loader2 } from 'lucide-react';
-import ChatWidget from '../components/ChatWidget';
+import { ChatWidget } from '../components/ChatWidget';
 
 // Sub-páginas do Dashboard
 const GeneratorPage = React.lazy(() => import('./GeneratorPage'));

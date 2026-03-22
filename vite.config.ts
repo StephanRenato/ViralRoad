@@ -13,12 +13,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       outDir: 'dist',
-      chunkSizeWarningLimit: 1000,
-      rollupOptions: {
-        input: {
-          main: 'app.html'
-        }
-      }
+      chunkSizeWarningLimit: 1000
+    },
+    define: {
+      'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },
   };
 });

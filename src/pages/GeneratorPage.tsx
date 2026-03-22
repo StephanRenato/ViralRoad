@@ -3,14 +3,14 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  Zap, ArrowRight, Save, Target, Loader2, Sparkles, Briefcase, CheckCircle2, AlertTriangle, Check, ExternalLink, Clapperboard, Shuffle, Edit3
+  Zap, ArrowRight, Save, Target, Loader2, Sparkles, Briefcase, CheckCircle2, AlertTriangle, Check, ExternalLink, Clapperboard, Shuffle, Edit3, Image as ImageIcon, Film, Download
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   User, ProfileType, Platform, Format, FunnelStage, TargetAudience, CommunicationMode
 } from '../types';
 import { 
-  generateRoadStrategy
+  generateRoadStrategy, generateImage, generateVideo
 } from '../services/aiService';
 import { supabase } from '../services/supabase';
 import { FinalStrategySkeleton } from '../components/PerformancePlaceholders';
@@ -89,6 +89,11 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
   const [roadStrategy, setRoadStrategy] = useState<any>(null);
   
+  const [generatedImage, setGeneratedImage] = useState<string | null>(null);
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [generatedVideo, setGeneratedVideo] = useState<string | null>(null);
+  const [isGeneratingVideo, setIsGeneratingVideo] = useState(false);
+  
   const [params, setParams] = useState({
     segment: '', // Objective
     platform: Platform.Instagram,
@@ -150,6 +155,36 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
       setSaveError(e.message || "Falha na Engine Road. Tente novamente em instantes.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateImage = async () => {
+    if (!roadStrategy || isGeneratingImage) return;
+    setIsGeneratingImage(true);
+    try {
+      const prompt = `Uma imagem profissional e viral para um post de ${params.profileType} sobre ${params.segment}. Estilo moderno, alta qualidade, cores vibrantes.`;
+      const url = await generateImage(prompt);
+      setGeneratedImage(url);
+    } catch (error) {
+      console.error("Erro ao gerar imagem:", error);
+      setSaveError("Falha ao gerar imagem. Tente novamente.");
+    } finally {
+      setIsGeneratingImage(false);
+    }
+  };
+
+  const handleGenerateVideo = async () => {
+    if (!roadStrategy || isGeneratingVideo) return;
+    setIsGeneratingVideo(true);
+    try {
+      const prompt = `Um vídeo curto e dinâmico de 5 segundos mostrando um cenário de ${params.profileType} focado em ${params.segment}. Movimento de câmera suave, iluminação cinematográfica.`;
+      const url = await generateVideo(prompt);
+      setGeneratedVideo(url);
+    } catch (error) {
+      console.error("Erro ao gerar vídeo:", error);
+      setSaveError("Falha ao gerar vídeo. Tente novamente.");
+    } finally {
+      setIsGeneratingVideo(false);
     }
   };
 
@@ -404,6 +439,92 @@ const GeneratorPage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ us
                       </div>
                       <div className="bg-zinc-50 dark:bg-zinc-800/50 p-8 rounded-[2.5rem] text-sm font-bold italic leading-relaxed whitespace-pre-wrap border dark:border-zinc-800 shadow-inner">
                         {roadStrategy.video_script}
+                      </div>
+                    </div>
+
+                    {/* Visual Road Section */}
+                    <div className="space-y-6 pt-6 border-t dark:border-zinc-800">
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={18} className="text-yellow-400" />
+                        <h4 className="text-[10px] font-black uppercase text-yellow-400 tracking-[0.3em] italic">Visual Road (IA)</h4>
+                      </div>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Image Generation */}
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 p-6 rounded-[2.5rem] border dark:border-zinc-800 space-y-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[9px] font-black uppercase text-zinc-500 italic">Capa / Imagem do Post</span>
+                            {!generatedImage && (
+                              <button 
+                                onClick={handleGenerateImage}
+                                disabled={isGeneratingImage}
+                                className="bg-yellow-400 hover:bg-yellow-500 text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all disabled:opacity-50"
+                              >
+                                {isGeneratingImage ? <Loader2 size={12} className="animate-spin" /> : <ImageIcon size={12} />}
+                                {isGeneratingImage ? 'Gerando...' : 'Gerar Imagem'}
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="aspect-square bg-zinc-200 dark:bg-zinc-900 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-800">
+                            {generatedImage ? (
+                              <img src={generatedImage} alt="IA Generated" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            ) : (
+                              <div className="text-center p-6 space-y-2">
+                                <ImageIcon size={32} className="mx-auto text-zinc-400" />
+                                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Aguardando geração...</p>
+                              </div>
+                            )}
+                          </div>
+                          
+                          {generatedImage && (
+                            <a 
+                              href={generatedImage} 
+                              download="road-image.png"
+                              className="w-full py-3 bg-zinc-900 dark:bg-zinc-800 text-white rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition-all"
+                            >
+                              <Download size={12} /> Baixar Imagem
+                            </a>
+                          )}
+                        </div>
+
+                        {/* Video Generation */}
+                        <div className="bg-zinc-50 dark:bg-zinc-800/50 p-6 rounded-[2.5rem] border dark:border-zinc-800 space-y-4">
+                          <div className="flex justify-between items-center">
+                            <span className="text-[9px] font-black uppercase text-zinc-500 italic">Preview de Vídeo (Veo)</span>
+                            {!generatedVideo && (
+                              <button 
+                                onClick={handleGenerateVideo}
+                                disabled={isGeneratingVideo}
+                                className="bg-yellow-400 hover:bg-yellow-500 text-black px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all disabled:opacity-50"
+                              >
+                                {isGeneratingVideo ? <Loader2 size={12} className="animate-spin" /> : <Film size={12} />}
+                                {isGeneratingVideo ? 'Gerando...' : 'Gerar Vídeo'}
+                              </button>
+                            )}
+                          </div>
+                          
+                          <div className="aspect-square bg-zinc-200 dark:bg-zinc-900 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-dashed border-zinc-300 dark:border-zinc-800">
+                            {generatedVideo ? (
+                              <video src={generatedVideo} controls className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="text-center p-6 space-y-2">
+                                <Film size={32} className="mx-auto text-zinc-400" />
+                                <p className="text-[9px] font-bold text-zinc-500 uppercase tracking-widest">Aguardando geração...</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {generatedVideo && (
+                            <a 
+                              href={generatedVideo} 
+                              download="road-video.mp4"
+                              className="w-full py-3 bg-zinc-900 dark:bg-zinc-800 text-white rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-black transition-all"
+                            >
+                              <Download size={12} /> Baixar Vídeo
+                            </a>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

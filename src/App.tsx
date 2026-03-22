@@ -4,8 +4,8 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { User, PlanType, SubscriptionStatus, ProfileType } from './types';
 import { supabase } from './services/supabase';
 import GlobalLoader from './components/GlobalLoader';
-import GeminiKeyGuard from './components/GeminiKeyGuard';
 import Sidebar from './components/Sidebar';
+import GeminiAssistant from './components/GeminiAssistant';
 import Dashboard from './pages/Dashboard';
 
 // Rotas Públicas & Institucionais
@@ -273,60 +273,59 @@ const App: React.FC = () => {
   if (loading) return <GlobalLoader />;
 
   return (
-    <GeminiKeyGuard>
-      <HashRouter>
-        <Suspense fallback={<GlobalLoader />}>
-          <Routes>
-            {/* Rotas Públicas */}
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/privacy" element={<Privacy />} />
-            <Route path="/terms" element={<Terms />} />
-            <Route path="/support" element={<Support />} />
-            <Route path="/sales" element={<SalesPage />} />
-            
-            {/* Rotas de Autenticação */}
-            <Route path="/login" element={session && user ? <Navigate to="/dashboard" /> : <Login onLogin={() => {}} />} />
-            <Route path="/register" element={session && user ? <Navigate to="/dashboard" /> : <Register onRegister={() => {}} />} />
-            <Route path="/forgot-password" element={session && user ? <Navigate to="/dashboard" /> : <ForgotPassword />} />
-            <Route path="/update-password" element={<UpdatePassword />} />
-            
-            {/* Rotas Protegidas */}
-            <Route path="/success" element={
-              <ProtectedRoute session={session} user={user} loading={loading}>
-                <SuccessPage user={user!} onRefresh={async () => { await fetchUserData(session.user); }} />
-              </ProtectedRoute>
-            } />
-            
-            <Route path="/dashboard/*" element={
-              <ProtectedRoute session={session} user={user} loading={loading}>
-                <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
-                  <Sidebar 
+    <HashRouter>
+      <Suspense fallback={<GlobalLoader />}>
+        <Routes>
+          {/* Rotas Públicas */}
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/support" element={<Support />} />
+          <Route path="/sales" element={<SalesPage />} />
+          
+          {/* Rotas de Autenticação */}
+          <Route path="/login" element={session && user ? <Navigate to="/dashboard" /> : <Login onLogin={() => {}} />} />
+          <Route path="/register" element={session && user ? <Navigate to="/dashboard" /> : <Register onRegister={() => {}} />} />
+          <Route path="/forgot-password" element={session && user ? <Navigate to="/dashboard" /> : <ForgotPassword />} />
+          <Route path="/update-password" element={<UpdatePassword />} />
+          
+          {/* Rotas Protegidas */}
+          <Route path="/success" element={
+            <ProtectedRoute session={session} user={user} loading={loading}>
+              <SuccessPage user={user!} onRefresh={async () => { await fetchUserData(session.user); }} />
+            </ProtectedRoute>
+          } />
+          
+          <Route path="/dashboard/*" element={
+            <ProtectedRoute session={session} user={user} loading={loading}>
+              <div className="flex min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-150">
+                <Sidebar 
+                  user={user!} 
+                  theme={theme} 
+                  onToggleTheme={toggleTheme} 
+                  onLogout={handleLogout} 
+                  onUpgradeClick={() => setShowUpgradeModal(true)} 
+                />
+                <main className="flex-1 overflow-auto scroll-smooth-container relative">
+                   <Dashboard 
                     user={user!} 
-                    theme={theme} 
-                    onToggleTheme={toggleTheme} 
                     onLogout={handleLogout} 
-                    onUpgradeClick={() => setShowUpgradeModal(true)} 
+                    showUpgrade={showUpgradeModal} 
+                    onCloseUpgrade={() => setShowUpgradeModal(false)} 
+                    onOpenUpgrade={() => setShowUpgradeModal(true)} 
+                    onRefreshUser={() => fetchUserData(session.user, true)}
                   />
-                  <main className="flex-1 overflow-auto scroll-smooth-container relative">
-                     <Dashboard 
-                      user={user!} 
-                      onLogout={handleLogout} 
-                      showUpgrade={showUpgradeModal} 
-                      onCloseUpgrade={() => setShowUpgradeModal(false)} 
-                      onOpenUpgrade={() => setShowUpgradeModal(true)} 
-                      onRefreshUser={() => fetchUserData(session.user, true)}
-                    />
-                  </main>
-                </div>
-              </ProtectedRoute>
-            } />
-            
-            {/* Fallback 404 */}
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
-        </Suspense>
-      </HashRouter>
-    </GeminiKeyGuard>
+                </main>
+              </div>
+            </ProtectedRoute>
+          } />
+          
+          {/* Fallback 404 */}
+          <Route path="*" element={<Navigate to="/" />} />
+        </Routes>
+        {session && user && <GeminiAssistant />}
+      </Suspense>
+    </HashRouter>
   );
 };
 

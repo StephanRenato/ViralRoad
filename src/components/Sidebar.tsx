@@ -22,6 +22,8 @@ import { supabase } from '../services/supabase';
 import { motion } from 'framer-motion';
 import { useEffect } from 'react';
 
+import { GoogleGenAI } from "@google/genai";
+
 interface SidebarProps {
   user: User;
   theme: 'light' | 'dark';
@@ -63,9 +65,22 @@ const Sidebar: React.FC<SidebarProps> = ({ user, theme, onToggleTheme, onLogout,
   useEffect(() => {
     const checkIA = async () => {
       try {
-        const res = await fetch('/api/gemini-health');
-        if (res.ok) setIaStatus('ok');
-        else setIaStatus('error');
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+          setIaStatus('error');
+          return;
+        }
+        const genAI = new GoogleGenAI({ apiKey });
+        const response = await genAI.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: { parts: [{ text: "ping" }] }
+        });
+        
+        if (response.text) {
+          setIaStatus('ok');
+        } else {
+          setIaStatus('error');
+        }
       } catch (e) {
         setIaStatus('error');
       }

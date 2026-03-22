@@ -16,7 +16,7 @@ import {
   fetchSocialProfile,
   fetchInstagramPosts
 } from '../services/apifyService';
-import { supabase } from '../services/supabase';
+import { supabase, metricsService, analyticsService } from '../services/supabase';
 import { PlatformTab } from '../components/PerformancePlaceholders';
 
 const LOADING_TIPS = [
@@ -211,6 +211,8 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       // Sincronização
       try {
         const { data: { session } } = await supabase.auth.getSession();
+        
+        // 1. Save to profiles (legacy/sync)
         await fetch('/api/db/upsert-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -220,8 +222,27 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
             accessToken: session?.access_token
           })
         });
+
+        // 2. Save granular metrics
+        await metricsService.saveMetrics(user.id, activePlatform, normalized.username || 'user', {
+          followers: normalized.followers,
+          engagement_rate: normalized.engagement_rate,
+          views: normalized.views,
+          posts: normalized.posts
+        } as any);
+
+        // 3. Save granular analysis
+        await analyticsService.saveAnalysis(user.id, activePlatform, {
+          viral_score: result.road_score,
+          best_format: mergedAnalysisAi.best_format,
+          frequency_suggestion: mergedAnalysisAi.frequency_suggestion,
+          diagnostic: mergedAnalysisAi.diagnostic,
+          market_fit: mergedAnalysisAi.market_fit,
+          content_pillars: mergedAnalysisAi.content_pillars
+        });
+
       } catch (proxyErr) {
-        console.warn("Falha na sincronização, salvando localmente.");
+        console.warn("Falha na sincronização, salvando localmente.", proxyErr);
         localStorage.setItem(`road_perf_${user.id}`, JSON.stringify(updated));
       }
       
@@ -263,8 +284,8 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       const res = await fetch('/api/apify-health');
       const data = await res.json();
       
-      addLog("Iniciando diagnóstico de conexão OpenAI (IA)...");
-      const resIA = await fetch('/api/openai-health');
+      addLog("Iniciando diagnóstico de conexão Gemini (IA)...");
+      const resIA = await fetch('/api/gemini-health');
       const dataIA = await resIA.json();
 
       addLog("Iniciando diagnóstico de conexão Supabase...");
@@ -279,13 +300,13 @@ const PerformancePage: React.FC<{ user: User, onRefreshUser: () => void }> = ({ 
       });
       const dataDB = await resDB.json();
 
-      setDiagnosticStatus({ apify: data, openai: dataIA, supabase: dataSupa, dbProxy: dataDB });
+      setDiagnosticStatus({ apify: data, gemini: dataIA, supabase: dataSupa, dbProxy: dataDB });
 
       if (data.status === 'ok' && dataIA.status === 'ok' && dataSupa.status === 'ok' && (dataDB.status === 'ok' || dataDB.status === 'success')) {
-        addLog(`✅ Tudo OK! Apify: ${data.user} | OpenAI: Ativo | Supabase: Conectado | DB Proxy: OK`);
+        addLog(`✅ Tudo OK! Apify: ${data.user} | Gemini: Ativo | Supabase: Conectado | DB Proxy: OK`);
       } else {
         if (data.status !== 'ok') addLog(`❌ Erro Apify: ${data.message}`);
-        if (dataIA.status !== 'ok') addLog(`❌ Erro OpenAI: ${dataIA.message}`);
+        if (dataIA.status !== 'ok') addLog(`❌ Erro Gemini: ${dataIA.message}`);
         if (dataSupa.status !== 'ok') addLog(`❌ Erro Supabase: ${dataSupa.message}`);
         if (dataDB.status !== 'ok' && dataDB.status !== 'success') addLog(`❌ Erro DB Proxy: ${dataDB.message || 'Falha no proxy'}`);
       }

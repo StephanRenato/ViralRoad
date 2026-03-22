@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 
+// Inicia a aplicação Viral Road
 console.log("🚀 Viral Road: Iniciando aplicação...");
 
 const rootElement = document.getElementById('root');

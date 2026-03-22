@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { GoogleGenAI } from "@google/genai";
 
 export const IconGenerator: React.FC = () => {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
@@ -7,30 +8,37 @@ export const IconGenerator: React.FC = () => {
   const generateIcon = async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/ia-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: "dall-e-3",
-          contents: "A modern, minimalist app icon for 'VIRAL ROAD'. The design should feature a stylized lightning bolt integrated with a road or a growth curve, symbolizing AI-powered content strategy and viral growth. Color palette: vibrant yellow (#FFC700) and deep charcoal black. High-tech, premium aesthetic, clean lines, suitable for a mobile app icon.",
-          config: {
-            imageConfig: {
-              aspectRatio: "1:1",
-            },
-          },
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || errorData.error || "Erro ao gerar ícone");
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("A chave da API Gemini não foi configurada.");
       }
 
-      const data = await response.json();
-      if (data.image) {
-        setImageUrl(`data:${data.image.mimeType};base64,${data.image.data}`);
-      } else {
-        console.error("No image data in response", data);
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            {
+              text: "A modern, minimalist app icon for 'VIRAL ROAD'. The design should feature a stylized lightning bolt integrated with a road or a growth curve, symbolizing AI-powered content strategy and viral growth. Color palette: vibrant yellow (#FFC700) and deep charcoal black. High-tech, premium aesthetic, clean lines, suitable for a mobile app icon.",
+            },
+          ],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: "1:1",
+          },
+        },
+      });
+
+      const candidates = response.candidates;
+      if (candidates && candidates[0]?.content?.parts) {
+        for (const part of candidates[0].content.parts) {
+          if (part.inlineData?.data) {
+            const base64EncodeString: string = part.inlineData.data;
+            setImageUrl(`data:image/png;base64,${base64EncodeString}`);
+            break;
+          }
+        }
       }
     } catch (error) {
       console.error("Error generating icon:", error);

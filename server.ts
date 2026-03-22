@@ -1,10 +1,9 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from '@supabase/supabase-js';
-import OpenAI from "openai";
-import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import path from "path";
 
 dotenv.config();
 
@@ -74,6 +73,29 @@ async function startServer() {
   // Ping for connectivity test
   app.get("/api/ping", (req, res) => {
     res.send("pong");
+  });
+
+  // Gemini Health Check
+  app.get("/api/gemini-health", async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        return res.json({ 
+          status: 'error', 
+          message: 'Chave da API Gemini não configurada' 
+        });
+      }
+      
+      return res.json({ 
+        status: 'ok', 
+        message: 'Configuração da API Gemini detectada'
+      });
+    } catch (error: any) {
+      return res.status(500).json({ 
+        status: 'error', 
+        message: error.message || 'Erro ao verificar Gemini' 
+      });
+    }
   });
 
   // Supabase Health Check
@@ -156,7 +178,7 @@ async function startServer() {
       SUPABASE_URL: SUPABASE_URL ? "SET" : "MISSING",
       SERVICE_ROLE_KEY: SERVICE_ROLE_KEY ? `SET (Length: ${SERVICE_ROLE_KEY.length})` : "MISSING",
       ANON_KEY: ANON_KEY ? `SET (Length: ${ANON_KEY.length})` : "MISSING",
-      OPENAI_API_KEY: process.env.OPENAI_API_KEY ? "SET" : "MISSING",
+      GEMINI_API_KEY: process.env.GEMINI_API_KEY ? "SET" : "MISSING",
       APIFY_TOKEN: APIFY_TOKEN ? "SET" : "MISSING",
       NODE_ENV: process.env.NODE_ENV
     });
@@ -590,6 +612,58 @@ async function startServer() {
     }
   });
 
+  // Road Strategies Proxy Routes
+  app.get("/api/db/road-strategies", async (req, res) => {
+    const { userId } = req.query;
+    console.log(`${new Date().toISOString()} | DB Get Road Strategies Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      const { data, error } = await supabaseServer
+        .from('content_blueprints') // Assuming content_blueprints is used for road strategies
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Road Strategies Error:", error);
+      return res.status(500).json({ error: "DB_GET_ROAD_STRATEGIES_ERROR", message: error.message });
+    }
+  });
+
+  app.post("/api/db/road-strategies", async (req, res) => {
+    const { userId, payload } = req.body;
+    console.log(`${new Date().toISOString()} | DB Insert Road Strategy Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!payload) return res.status(400).json({ error: "Missing payload" });
+
+    try {
+      const itemToInsert = { 
+        user_id: userId,
+        niche: payload.niche,
+        objective: payload.objective,
+        platform: payload.platform,
+        strategy_json: payload.strategy_json,
+        created_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabaseServer
+        .from('content_blueprints')
+        .insert(itemToInsert)
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Insert Road Strategy Error:", error);
+      return res.status(500).json({ error: "DB_INSERT_ROAD_STRATEGY_ERROR", message: error.message });
+    }
+  });
+
   // Usage Limits Proxy Routes
   app.get("/api/db/usage", async (req, res) => {
     const { userId } = req.query;
@@ -644,6 +718,108 @@ async function startServer() {
     } catch (error: any) {
       console.error("DB Increment Usage Error:", error);
       return res.status(500).json({ error: "DB_INCREMENT_USAGE_ERROR", message: error.message });
+    }
+  });
+
+  // Performance Metrics Proxy Routes
+  app.get("/api/db/metrics", async (req, res) => {
+    const { userId, platform } = req.query;
+    console.log(`${new Date().toISOString()} | DB Get Metrics Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      let query = supabaseServer
+        .from('performance_metrics')
+        .select('*')
+        .eq('user_id', userId)
+        .order('recorded_at', { ascending: false });
+      
+      if (platform) {
+        query = query.eq('platform', platform);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Metrics Error:", error);
+      return res.status(500).json({ error: "DB_GET_METRICS_ERROR", message: error.message });
+    }
+  });
+
+  app.post("/api/db/metrics", async (req, res) => {
+    const { userId, payload } = req.body;
+    console.log(`${new Date().toISOString()} | DB Insert Metrics Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!payload) return res.status(400).json({ error: "Missing payload" });
+
+    try {
+      const itemToInsert = { ...payload, user_id: userId };
+
+      const { data, error } = await supabaseServer
+        .from('performance_metrics')
+        .insert(itemToInsert)
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Insert Metrics Error:", error);
+      return res.status(500).json({ error: "DB_INSERT_METRICS_ERROR", message: error.message });
+    }
+  });
+
+  // Engagement Analytics Proxy Routes
+  app.get("/api/db/analytics", async (req, res) => {
+    const { userId, platform } = req.query;
+    console.log(`${new Date().toISOString()} | DB Get Analytics Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      let query = supabaseServer
+        .from('engagement_analytics')
+        .select('*')
+        .eq('user_id', userId)
+        .order('analyzed_at', { ascending: false });
+      
+      if (platform) {
+        query = query.eq('platform', platform);
+      }
+
+      const { data, error } = await query;
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Get Analytics Error:", error);
+      return res.status(500).json({ error: "DB_GET_ANALYTICS_ERROR", message: error.message });
+    }
+  });
+
+  app.post("/api/db/analytics", async (req, res) => {
+    const { userId, payload } = req.body;
+    console.log(`${new Date().toISOString()} | DB Insert Analytics Request for ${userId}`);
+    
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+    if (!payload) return res.status(400).json({ error: "Missing payload" });
+
+    try {
+      const itemToInsert = { ...payload, user_id: userId };
+
+      const { data, error } = await supabaseServer
+        .from('engagement_analytics')
+        .insert(itemToInsert)
+        .select();
+      
+      if (error) throw error;
+      return res.json({ status: "ok", data });
+    } catch (error: any) {
+      console.error("DB Insert Analytics Error:", error);
+      return res.status(500).json({ error: "DB_INSERT_ANALYTICS_ERROR", message: error.message });
     }
   });
 
@@ -731,163 +907,6 @@ async function startServer() {
         error: "APIFY_PROXY_ERROR", 
         message: error.message || "Erro interno no proxy do Apify." 
       });
-    }
-  });
-
-  // Gemini IA Proxy Route
-  app.post("/api/ia-proxy", async (req, res) => {
-    console.log(`${new Date().toISOString()} | Gemini IA Proxy Request received`);
-    try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-      
-      if (!apiKey || apiKey.length < 10) {
-        console.error("GEMINI_API_KEY MISSING OR INVALID");
-        return res.status(401).json({ 
-          error: "GEMINI_KEY_MISSING", 
-          message: "A chave da API Gemini não foi configurada no servidor." 
-        });
-      }
-
-      const genAI = new GoogleGenAI({ apiKey });
-      const { contents, config, model } = req.body || {};
-      
-      const targetModel = model === 'gpt-4o' || !model ? "gemini-3-flash-preview" : model;
-
-      // If it's an image generation request
-      if (targetModel.includes('image')) {
-        // Fallback to OpenAI for images if needed, or handle Gemini image gen
-        // For now, let's keep the OpenAI image logic if they have a key
-        const openAIKey = (process.env.OPENAI_API_KEY || '').trim();
-        if (openAIKey) {
-          const openai = new OpenAI({ apiKey: openAIKey });
-          const prompt = typeof contents === 'string' ? contents : (contents?.parts?.[0]?.text || "Generate an icon");
-          const response = await openai.images.generate({
-            model: "dall-e-3",
-            prompt: prompt,
-            n: 1,
-            size: "1024x1024",
-            response_format: "b64_json"
-          });
-
-          if (response.data && response.data[0] && response.data[0].b64_json) {
-            return res.status(200).json({ 
-              image: {
-                data: response.data[0].b64_json,
-                mimeType: "image/png"
-              }
-            });
-          }
-        }
-      }
-
-      const response = await genAI.models.generateContent({
-        model: targetModel,
-        contents: typeof contents === 'string' ? { parts: [{ text: contents }] } : contents,
-        config: {
-          ...config,
-          responseMimeType: config?.responseMimeType || "application/json"
-        }
-      });
-
-      const rawText = cleanJson(response.text || '{}');
-      
-      let parsedData;
-      try {
-        parsedData = JSON.parse(rawText);
-      } catch (e) {
-        parsedData = { text: response.text, raw: rawText };
-      }
-
-      return res.status(200).json(parsedData);
-    } catch (error: any) {
-      console.error("Gemini Proxy Error:", error);
-      
-      return res.status(500).json({ 
-        error: "GEMINI_PROXY_ERROR", 
-        message: error.message || "Erro interno no processamento da IA." 
-      });
-    }
-  });
-
-  // Gemini Health Route
-  app.get("/api/gemini-health", async (req, res) => {
-    try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-      if (!apiKey || apiKey.length < 10) {
-        return res.json({ status: "error", message: "Chave Gemini ausente ou curta demais" });
-      }
-      
-      const genAI = new GoogleGenAI({ apiKey });
-      const response = await genAI.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: { parts: [{ text: "ping" }] }
-      });
-      
-      if (response.text) {
-        return res.json({ status: "ok", message: "Gemini está operacional" });
-      }
-      return res.json({ status: "error", message: "Resposta vazia do Gemini" });
-    } catch (error: any) {
-      console.error("Gemini Health Error:", error);
-      return res.json({ 
-        status: "error", 
-        message: error.message || "Erro desconhecido"
-      });
-    }
-  });
-
-  // Apify Health Route
-  app.get("/api/apify-health", async (req, res) => {
-    try {
-      if (!APIFY_TOKEN || APIFY_TOKEN.length < 10) {
-        return res.json({ status: "error", message: "Token Apify ausente" });
-      }
-      const response = await fetch(`https://api.apify.com/v2/users/me?token=${APIFY_TOKEN}`);
-      if (response.ok) {
-        const data = await response.json();
-        return res.json({ status: "ok", user: data.data.username || data.data.email });
-      }
-      return res.json({ status: "error", message: "Token Apify inválido ou expirado" });
-    } catch (error: any) {
-      return res.json({ status: "error", message: error.message });
-    }
-  });
-
-  // Social Analyze Proxy Route (Gemini version)
-  app.post("/api/social-analyze", async (req, res) => {
-    console.log(`${new Date().toISOString()} | Social Analyze Proxy Request received`);
-    try {
-      const apiKey = (process.env.GEMINI_API_KEY || '').trim();
-      if (!apiKey || apiKey.length < 10) {
-        return res.status(401).json({ error: "GEMINI_KEY_MISSING", message: "A chave da API Gemini não foi configurada." });
-      }
-
-      const genAI = new GoogleGenAI({ apiKey });
-      const { profiles, niche, specialization, realMetrics, objective, recentPosts } = req.body || {};
-
-      const metricsContext = realMetrics ? `
-        DADOS REAIS DE ENGAJAMENTO (@${realMetrics.handle}):
-        - Seguidores: ${realMetrics.followers}
-        - Média Likes: ${realMetrics.likes}
-        - Vídeos/Posts: ${realMetrics.posts}
-        - Taxa de Engajamento Calculada: ${realMetrics.engagement_rate}%
-      ` : "DADOS: Perfil ainda não analisado ou privado.";
-
-      const prompt = `Analise o perfil social: ${niche} (${specialization}). Objetivo: ${objective || "Crescimento"}. ${metricsContext}. Responda obrigatoriamente em formato JSON com o campo "results" contendo um array de objetos com "profile_id" e "analysis" (viral_score, best_format, frequency_suggestion, content_pillars, diagnostic, next_post_recommendation).`;
-
-      const response = await genAI.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: { parts: [{ text: prompt }] },
-        config: {
-          responseMimeType: "application/json"
-        }
-      });
-
-      const rawText = cleanJson(response.text || '{}');
-      return res.status(200).json(JSON.parse(rawText));
-    } catch (error: any) {
-      console.error("Social Analyze Proxy Error:", error);
-      return res.status(500).json({ error: error.message || "Internal Server Error" });
     }
   });
 

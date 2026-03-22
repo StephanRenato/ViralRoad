@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Send, X, Zap, Paperclip, Image as ImageIcon, Mic, Loader2, User as UserIcon } from 'lucide-react';
 import { User } from '../types';
+import { GoogleGenAI } from "@google/genai";
 
 interface Message {
   role: 'user' | 'model';
@@ -59,12 +60,18 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
     setIsTyping(true);
 
     try {
-      const contents = messages.map(m => ({
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        throw new Error("A chave da API Gemini não foi configurada.");
+      }
+
+      const genAI = new GoogleGenAI({ apiKey });
+      
+      const history = messages.map(m => ({
         role: m.role,
         parts: [{ text: m.text }]
       }));
 
-      // Adiciona a mensagem atual com anexo se houver
       const currentParts: any[] = [{ text: userMessage }];
       if (currentAttachment) {
         currentParts.push({
@@ -74,44 +81,35 @@ export const ChatWidget: React.FC<{ user: User }> = ({ user }) => {
           }
         });
       }
-      contents.push({ role: 'user', parts: currentParts });
 
-      const response = await fetch('/api/ia-proxy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'gemini-3-flash-preview',
-          contents,
-          config: {
-            systemInstruction: `Você é o Agente de Suporte Avançado da VIRAL ROAD. 
-            Responda de forma prestativa, inteligente e adaptada ao tom do usuário (${user.name}).
-            
-            CONHECIMENTO DO SISTEMA:
-            - Road Gerador: Fábrica de roteiros (Blueprints) de alta performance.
-            - Road Performance: Auditoria neural de métricas reais (Instagram, TikTok, etc).
-            - Road Acervo: Onde ficam salvos todos os seus tesouros de conteúdo.
-            - Road Calendário: Sua linha do tempo estratégica.
-            - Road Hooks: Gatilhos mentais para retenção máxima.
-            
-            DIRETRIZES:
-            1. Se o usuário parecer frustrado, seja empático. Se estiver animado, seja enérgico.
-            2. Se ele perguntar sobre algo que não sabe, admita e sugira falar com um especialista.
-            3. ESPECIALISTA HUMANO: Se o usuário quiser falar com Stephan Silva (CEO/Especialista), forneça este link: https://wa.me/message/FIHKA4ZOQIXCN1.
-            4. Você entende imagens e áudios. Analise-os se enviados.
-            5. Responda em no máximo 1 minuto (simulado pela interface).`,
-            temperature: 0.8,
-          }
-        })
+      const response = await genAI.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [...history, { role: 'user', parts: currentParts }],
+        config: {
+          systemInstruction: `Você é o Agente de Suporte Avançado da VIRAL ROAD. 
+          Responda de forma prestativa, inteligente e adaptada ao tom do usuário (${user.name}).
+          
+          CONHECIMENTO DO SISTEMA:
+          - Road Gerador: Fábrica de roteiros (Blueprints) de alta performance.
+          - Road Performance: Auditoria neural de métricas reais (Instagram, TikTok, etc).
+          - Road Acervo: Onde ficam salvos todos os seus tesouros de conteúdo.
+          - Road Calendário: Sua linha do tempo estratégica.
+          - Road Hooks: Gatilhos mentais para retenção máxima.
+          
+          DIRETRIZES:
+          1. Se o usuário parecer frustrado, seja empático. Se estiver animado, seja enérgico.
+          2. Se ele perguntar sobre algo que não sabe, admita e sugira falar com um especialista.
+          3. ESPECIALISTA HUMANO: Se o usuário quiser falar com Stephan Silva (CEO/Especialista), forneça este link: https://wa.me/message/FIHKA4ZOQIXCN1.
+          4. Você entende imagens e áudios. Analise-os se enviados.
+          5. Responda em no máximo 1 minuto (simulado pela interface).`,
+        }
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || errorData.error || "Erro na Engine Road");
-      }
-
-      const data = await response.json();
-      setMessages(prev => [...prev, { role: 'model', text: data.text || "A Engine Road encontrou uma instabilidade momentânea." }]);
+      const text = response.text;
+      
+      setMessages(prev => [...prev, { role: 'model', text: text || "A Engine Road encontrou uma instabilidade momentânea." }]);
     } catch (error) {
+      console.error("Erro no chat:", error);
       setMessages(prev => [...prev, { role: 'model', text: "Erro de conexão com a Cloud Road." }]);
     } finally {
       setIsTyping(false);
